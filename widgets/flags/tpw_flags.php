@@ -20,12 +20,12 @@ class tpw_flags extends Base_Widget {
 	static function tp_widget_do( $args ) {
 		global $my_transposh_plugin;
 		// we calculate the plugin path part, so we can link the images there
-		$plugpath = parse_url( $my_transposh_plugin->transposh_plugin_url, PHP_URL_PATH );
+		$plugin_path = untrailingslashit( parse_url( $my_transposh_plugin->transposh_plugin_url, PHP_URL_PATH ) );
 
 		echo "<div class=\"" . NO_TRANSLATE_CLASS . " transposh_flags\" >";
-		foreach ( $args as $langrecord ) {
-			echo "<a href=\"{$langrecord['url']}\"" . ( $langrecord['active'] ? ' class="tr_active"' : '' ) . '>' .
-			     Utilities::display_flag( "$plugpath/img/flags", $langrecord['flag'], $langrecord['langorig'], false ) .
+		foreach ( $args as $language_record ) {
+			echo "<a href=\"{$language_record['url']}\"" . ( $language_record['active'] ? ' class="tr_active"' : '' ) . '>' .
+			     Utilities::display_flag( "$plugin_path/img/flags", $language_record['flag'], $language_record['langorig'], false ) .
 			     "</a>";
 		}
 		echo "</div>";
