@@ -1,2 +1,12 @@
-/vendor/
+/.github/
+/.idea/
+/build/
+/tests/
+.wp-env.json
+.gitignore
 phpunit.xml
+phpunit.xml.dist
+DOCKER_ENV
+docker_tag
+output.log
+README.md
