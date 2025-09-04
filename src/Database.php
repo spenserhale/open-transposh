@@ -54,51 +54,39 @@ class Database {
 	 * @param string $original string we want translated
 	 * @param string $lang language we want it translated to
 	 *
-	 * @return mixed array with translation or false on cache miss
+	 * @return array|null array with translation or null on cache miss
 	 */
-	function cache_fetch( $original, $lang ) {
+	function cache_fetch( string $original, string $lang ): ?array {
 		if ( ! TP_ENABLE_CACHE ) {
-			return false;
+			return null;
 		}
-		$cached = false;
-		$key    = $lang . '_' . $original;
+		$key = $lang . '_' . $original;
 		if ( $this->memcache_working ) {
 			$cached = $this->memcache->get( $key );
-			LogService::legacy_log( 'memcached ' . $key . ' ' . $cached, 5 );
+			LogService::legacy_log( "memcached $key $cached", 5 );
 		} elseif ( function_exists( 'apc_fetch' ) ) {
 			$cached = apc_fetch( $key, $rc );
 			if ( $rc === false ) {
-				return false;
+				return null;
 			}
-			LogService::legacy_log( 'apc', 5 );
+			LogService::legacy_log( "apc $key $cached", 5 );
 		} elseif ( function_exists( 'apcu_fetch' ) ) {
 			$cached = apcu_fetch( $key, $rc );
 			if ( $rc === false ) {
-				return false;
+				return null;
 			}
-			LogService::legacy_log( 'apcu', 5 );
-		} elseif ( function_exists( 'xcache_get' ) ) {
-			$rc = @xcache_isset( $key );
-			if ( $rc === false ) {
-				return false;
-			}
-			$cached = @xcache_get( $key );
-			LogService::legacy_log( 'xcache', 5 );
-		} elseif ( function_exists( 'eaccelerator_get' ) ) {
-			$cached = eaccelerator_get( $key );
-			if ( $cached === null ) {
-				return false;
-			}
-			//TODO - unfortunantly null storing does not work here..
-			LogService::legacy_log( 'eaccelerator', 5 );
-		}
+			LogService::legacy_log( "apcu $key $cached", 5 );
+		} else {
+            $cached = null;
+        }
 		LogService::legacy_log( "Cache fetched: $original => $cached", 4 );
-		if ( $cached !== null && $cached !== false ) {
-			$cached = explode( '_', $cached, 2 );
-		}
 
-		return $cached;
-	}
+        return match (true) {
+            is_array( $cached ) => $cached,
+            is_string( $cached ) => (array) explode( '_', $cached, 2 ),
+            default => null
+        };
+    }
 
 	/**
 	 * Function to store translation in memory cache
@@ -198,8 +186,8 @@ class Database {
 		foreach ( $originals as $original ) {
 			$original = esc_sql( html_entity_decode( $original, ENT_NOQUOTES, 'UTF-8' ) );
 			$cached   = $this->cache_fetch( $original, $lang );
-			// if $cached is not false, there is something in the cache, so no need to prefetch
-			if ( $cached !== false ) {
+			// if $cached is not null, there is something in the cache, so no need to prefetch
+			if ( $cached !== null ) {
 				continue;
 			}
 			$where .= ( ( $where ) ? ' OR ' : '' ) . "original = '$original'";
@@ -248,8 +236,8 @@ class Database {
 		$original = esc_sql( html_entity_decode( $orig, ENT_NOQUOTES, 'UTF-8' ) );
 		// first we look in the cache
 		$cached = $this->cache_fetch( $original, $lang );
-		if ( $cached !== false ) {
-			LogService::legacy_log( "Exit from cache: {$cached[0]} {$cached[1]}", 4 );
+		if ( $cached !== null) {
+			LogService::legacy_log( "Exit from cache: $cached[0] $cached[1]", 4 );
 
 			return $cached;
 		}
@@ -296,8 +284,8 @@ class Database {
 		// The translation is saved in db in its escaped form
 		$translation = esc_sql( html_entity_decode( $trans, ENT_NOQUOTES, 'UTF-8' ) );
 		// The translation might be cached (notice the additional postfix)
-		[ $rev, $cached ] = $this->cache_fetch( 'R_' . $translation, $lang );
-		if ( $rev == 'r' ) {
+        [ $rev, $cached ] = $this->cache_fetch( 'R_' . $translation, $lang ) ?? [null, null];
+		if ( $rev === 'r' ) {
 			LogService::legacy_log( "Exit from cache: $translation $cached", 4 );
 
 			return $cached;
