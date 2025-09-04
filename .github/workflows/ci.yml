@@ -24,7 +24,7 @@ jobs:
       - name: Composer Install
         uses: php-actions/composer@v6
         with:
-          args: php_version=8.4
+          php_version: 8.4
           command: install -o --no-dev --no-interaction --prefer-dist
 
       - name: Create a built branch
