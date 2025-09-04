@@ -1,7 +1,7 @@
 <?php
 
 //Define for transposh plugin version
-const TRANSPOSH_PLUGIN_VER = '2.1.1';
+const TRANSPOSH_PLUGIN_VER = '2.1.4';
 
 //Language indicator in URL. i.e. lang=en
 const LANG_PARAM = 'lang';
