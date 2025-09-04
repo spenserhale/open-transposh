@@ -7,8 +7,12 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - uses: shivammathur/setup-php@v2
       - uses: actions/checkout@v3
       - uses: php-actions/composer@v6
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
 
       - name: Prepare for production
         run: |
@@ -24,7 +28,6 @@ jobs:
       - name: Composer Install
         uses: php-actions/composer@v6
         with:
-          php_version: "8.4"
           command: install -a --no-dev --no-interaction --ignore-platform-reqs --prefer-dist
 
       - name: Create a built branch
