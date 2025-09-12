@@ -302,9 +302,9 @@ class Plugin {
 		         stripos( $url, '/wp-json/' ) !== false ||
 		         stripos( $url, '/wp-admin/' ) !== false ||
 		         stripos( $url, '/wp-comments-post' ) !== false ||
-		         stripos( $url, '/main-sitemap.xsl' ) !== false || //YOAST?                
-		         stripos( $url, '.xsl' ) !== false || //YOAST?                
-		         stripos( $url, '.xml' ) !== false || //YOAST?                
+		         stripos( $url, '/main-sitemap.xsl' ) !== false || //YOAST?
+		         stripos( $url, '.xsl' ) !== false || //YOAST?
+		         stripos( $url, '.xml' ) !== false || //YOAST?
 		         stripos( $url, '/xmlrpc.php' ) !== false );
 	}
 
@@ -516,7 +516,7 @@ class Plugin {
 
 	//function flush_transposh_rewrite_rules() {
 	//add_filter('rewrite_rules_array', array(&$this, 'update_rewrite_rules'));
-//        $GLOBALS['wp_rewrite']->flush_rules();        
+//        $GLOBALS['wp_rewrite']->flush_rules();
 	//}
 
 	/**
@@ -686,7 +686,7 @@ class Plugin {
 		if ( ! is_dir( $transposh_upload_widgets_dir ) ) {
 			mkdir( $transposh_upload_widgets_dir, 0700 );
 		}
-		//** FULLSTOP        
+		//** FULLSTOP
 
 		LogService::legacy_log( "plugin_activate exit: " . __DIR__, 1 );
 		LogService::legacy_log( "testing name:" . plugin_basename( __FILE__ ), 4 );
@@ -1007,7 +1007,7 @@ class Plugin {
 		$use_params = ! $this->enable_permalinks_rewrite;
 
 		// we don't really know, but we sometime rewrite urls when we are in the default language (canonicals?), so just clean them up
-		//       if ($this->target_language == $this->options->default_language) 
+		//       if ($this->target_language == $this->options->default_language)
 		if ( $this->options->is_default_language( $this->target_language ) ) {
 			$href = Utilities::cleanup_url( $href, $this->home_url );
 			LogService::legacy_log( "cleaned up: $href", 4 );
@@ -1071,6 +1071,7 @@ class Plugin {
 		$q = &$GLOBALS['wp_query']->query_vars;
 		// returning the saved query strings
 		$q['s'] = $this->search_s;
+        $search    = '';
 		if ( ! empty( $q['s'] ) ) {
 			// added slashes screw with quote grouping when done early, so done later
 			$q['s'] = stripslashes( $q['s'] );
@@ -1084,7 +1085,6 @@ class Plugin {
 			}
 			$n         = ! empty( $q['exact'] ) ? '' : '%';
 			$searchand = '';
-			$search    = '';
 			foreach ( (array) $q['search_terms'] as $term ) {
 				// now we'll get possible translations for this term
 				$possible_original_terms = $this->database->get_orignal_phrases_for_search_term( $term, $this->target_language );
@@ -1512,7 +1512,7 @@ class Plugin {
 		}
 	}
 
-	// Super Proxy 
+	// Super Proxy
 	public function on_ajax_nopriv_proxy() {
 		// Check if enabled
 		if ( ! $this->options->enable_superproxy ) {
@@ -1660,7 +1660,7 @@ class Plugin {
 			}
 		}
 
-		// encode results 
+		// encode results
 		$jsonout = new stdClass();
 		if ( $suggestmode ) {
 			$jsonout->result = $result;
