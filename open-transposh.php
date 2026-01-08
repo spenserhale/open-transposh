@@ -20,7 +20,7 @@
  * Plugin Name:       Open Transposh
  * Plugin URI:        https://github.com/spenserhale/open-transposh
  * Description:       A Translation Filter Plugin for WordPress offers a unique approach to blog translation. It allows your blog to combine automatic and human translation aided by your users with an easy-to-use in-context interface.
- * Version:           2.1.6
+ * Version:           2.1.7
  * Requires at least: 6.0
  * Requires PHP:      8.1
  * Author:            Spenser Hale
