@@ -35,6 +35,12 @@ class Plugin {
 
 	/** @var Integrations Happens after editing */
 	private $third_party;
+
+	/** @var Mail Mail handler */
+	public $mail;
+
+	/** @var Ajax_Controller Ajax controller */
+	public $ajax_controller;
 	// list of properties
 
 	/** @var string The site url */
