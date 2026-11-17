@@ -45,16 +45,67 @@ test('homepage renders without PHP diagnostics (#18, #21)', async ({ page }) => 
 
 test('language switcher widget renders and links languages', async ({ page }) => {
 	await page.goto('/');
-	const switcher = page
-		.locator('.transposh_switcher, #transposh-wrapper, .tp-lang, [class*="tpw"]')
-		.first();
-	await expect(switcher).toBeVisible();
+	// The switcher renders inside the sidebar widget container; the default style
+	// exposes language targets as options of a select named "lang". Other styles
+	// keep the same widget container, so assert on the container plus the select.
+	const widget = page.locator('.widget.widget_transposh');
+	await expect(widget).toBeVisible();
+	const switcherSelect = widget.locator('select[name="lang"]');
+	await expect(switcherSelect).toBeVisible();
+	const optionValues = await switcherSelect
+		.locator('option')
+		.evaluateAll((options) => options.map((option) => (option as HTMLOptionElement).value));
+	expect(
+		optionValues.length,
+		`switcher offered no language targets; options were: ${optionValues.join(', ')}`,
+	).toBeGreaterThan(0);
 	await expectCleanPhp(await page.content());
 });
 
 test('switching language via ?lang=fr works without diagnostics', async ({ page }) => {
 	const response = await page.goto('/?lang=fr');
 	expect(response?.status()).toBe(200);
+	await expectCleanPhp(await page.content());
+	await expectCleanConsole(page);
+});
+
+test('switcher select navigates to the chosen language', async ({ page }) => {
+	await page.goto('/');
+	const switcherSelect = page.locator('select[name="lang"]');
+	const frenchOption = switcherSelect.locator('option[value*="lang=fr"]');
+	const optionValues = await switcherSelect
+		.locator('option')
+		.evaluateAll((options) => options.map((option) => (option as HTMLOptionElement).value));
+	await expect(
+		frenchOption,
+		`no French target in the switcher; options were: ${optionValues.join(', ')}`,
+	).toBeAttached();
+	await Promise.all([
+		page.waitForURL(/lang=fr/),
+		switcherSelect.selectOption({ value: await frenchOption.getAttribute('value') }),
+	]);
+	expect(page.url()).toContain('lang=fr');
+	const response = await page.reload();
+	expect(response?.status()).toBe(200);
+	// The widget marks the current language as selected after the switch.
+	await expect(switcherSelect.locator('option[selected], option:checked').first()).toHaveText(
+		/Français/i,
+	);
+	await expectCleanPhp(await page.content());
+	await expectCleanConsole(page);
+});
+
+test('translation edit mode shows the transposh script and t_jp params', async ({ page }) => {
+	await loginAsAdmin(page);
+	const response = await page.goto('/?tpedit=1&lang=fr');
+	expect(response?.status()).toBe(200);
+	const transposhScript = page.locator('script#transposh-js');
+	await expect(transposhScript).toHaveAttribute('src', /transposh/);
+	// Playwright's text matchers read innerText, which is empty for <script>
+	// elements, so read textContent directly.
+	const scriptParams = (await page.locator('script#transposh-js-extra').textContent()) ?? '';
+	expect(scriptParams).toContain('var t_jp =');
+	expect(scriptParams).toContain('ajaxurl');
 	await expectCleanPhp(await page.content());
 	await expectCleanConsole(page);
 });
