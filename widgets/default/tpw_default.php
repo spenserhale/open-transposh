@@ -18,7 +18,7 @@ class tpw_default extends Base_Widget {
 		echo '<select name="lang" onchange="document.location.href=this.options[this.selectedIndex].value;">'; // this is a select box which posts on change
 		foreach ( $args as $langrecord ) {
 			$is_selected = $langrecord['active'] ? " selected=\"selected\"" : "";
-			echo "<option value=\"{$langrecord['url']}\"{$is_selected}>{$langrecord['langorig']}</option>";
+			echo '<option value="' . esc_url( $langrecord['url'] ) . "\"{$is_selected}>" . esc_html( $langrecord['langorig'] ) . '</option>';
 		}
 		echo "</select><br/>";
 

@@ -13,9 +13,9 @@ class tpw_flags_css extends Base_Widget {
 	static function tp_widget_do( $args ) {
 		echo "<div class=\"" . NO_TRANSLATE_CLASS . " transposh_flags\" >";
 		foreach ( $args as $langrecord ) {
-			echo "<a href=\"{$langrecord['url']}\"" . ( $langrecord['active'] ? ' class="tr_active"' : '' ) . '>' .
-			     Utilities::display_flag( "", $langrecord['flag'], $langrecord['langorig'], true ) .
-			     "</a>";
+			echo '<a href="' . esc_url( $langrecord['url'] ) . '"' . ( $langrecord['active'] ? ' class="tr_active"' : '' ) . '>' .
+			     Utilities::display_flag( '', esc_attr( $langrecord['flag'] ), esc_attr( $langrecord['langorig'] ), true ) .
+			     '</a>';
 		}
 		echo "</div>";
 	}

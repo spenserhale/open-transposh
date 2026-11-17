@@ -147,7 +147,12 @@ class Plugin_Widget extends WP_Widget {
 		$settings      = $this->get_settings();
 		foreach ( $settings as $key => $value ) {
 			if ( is_active_widget( false, $this->id_base . '-' . $key, $this->id_base ) ) {
-				$activewidgets[ $value['widget_file'] ] = true;
+				// Mirror the load_widget() fallback: empty saved filenames load the default widget.
+				$widget_file = $value['widget_file'] ?? '';
+				if ( '' === $widget_file ) {
+					$widget_file = 'default/tpw_default.php';
+				}
+				$activewidgets[ $widget_file ] = true;
 			}
 		}
 
@@ -175,7 +180,12 @@ class Plugin_Widget extends WP_Widget {
 		$settings      = $this->get_settings();
 		foreach ( $settings as $key => $value ) {
 			if ( is_active_widget( false, $this->id_base . '-' . $key, $this->id_base ) ) {
-				$activewidgets[ $value['widget_file'] ] = true;
+				// Mirror the load_widget() fallback: empty saved filenames load the default widget.
+				$widget_file = $value['widget_file'] ?? '';
+				if ( '' === $widget_file ) {
+					$widget_file = 'default/tpw_default.php';
+				}
+				$activewidgets[ $widget_file ] = true;
 			}
 		}
 
