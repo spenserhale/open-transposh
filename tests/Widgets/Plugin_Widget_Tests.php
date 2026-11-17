@@ -21,6 +21,18 @@ class Plugin_Widget_Tests extends WP_UnitTestCase {
 	}
 
 	/**
+	 * Issue #21 - the widget name and description are translated after WordPress
+	 * localization is up, not in the constructor (which runs before init).
+	 */
+	public function test_widget_strings_translate_after_localization() {
+		$widget = $this->get_widget();
+		$this->assertSame( 'Open Transposh', $widget->name, 'constructor must not request a translation' );
+		$widget->translate_widget_strings();
+		$this->assertSame( 'Open Transposh', $widget->name );
+		$this->assertNotEmpty( $widget->widget_options['description'] );
+	}
+
+	/**
 	 * Runs a callback with all errors captured instead of reported
 	 *
 	 * @param callable $callback
