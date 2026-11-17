@@ -201,6 +201,53 @@ class Parser_Tests extends WP_UnitTestCase {
 	}
 
 	/**
+	 * Run a callback while recording any E_WARNING, E_DEPRECATED or E_NOTICE it raises.
+	 * Records everything, including diagnostics silenced with @, so the numeric-break lookaheads
+	 * must not rely on @ anymore.
+	 *
+	 * @param callable $callback code to run
+	 *
+	 * @return array recorded diagnostics
+	 */
+	private function capture_diagnostics( $callback ) {
+		$diagnostics = array();
+		set_error_handler( static function ( $errno, $errstr ) use ( &$diagnostics ) {
+			$diagnostics[] = $errno . ': ' . $errstr;
+
+			return true;
+		}, E_WARNING | E_DEPRECATED | E_NOTICE );
+		try {
+			$callback();
+		} finally {
+			restore_error_handler();
+		}
+
+		return $diagnostics;
+	}
+
+	/**
+	 * A number at the end of a phrase followed by a sentence breaker (issue #26) used to read
+	 * past the end of the string while compensating the breaker - no warning should be raised.
+	 */
+	public function testFix_html_number_break_at_end_of_string() {
+		$parse                       = $this->object;
+		$parse->fetch_translate_func = array( &$this, 'fetch_translation' );
+		$parse->url_rewrite_func     = array( &$this, 'rewrite' );
+		$parse->dir_rtl              = true;
+		$parse->lang                 = 'he';
+		$parse->default_lang         = false;
+		$parse->is_edit_mode         = false;
+		$parse->is_auto_translate    = false;
+
+		$result  = null;
+		$notices = $this->capture_diagnostics( static function () use ( $parse, &$result ) {
+			$result = $parse->fix_html( '<html><body>B2,</body></html>' );
+		} );
+		$this->assertEmpty( $notices );
+		$this->assertEquals( '<html lang="he" dir="rtl"><body>z-B2-z,</body></html>', $result );
+	}
+
+	/**
 	 * @todo Implement testGet_phrases_list().
 	 */
 	public function testGet_phrases_list() {

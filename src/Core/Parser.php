@@ -428,7 +428,7 @@ class Parser {
 //                            logger ("compensate part1?");
 					if ( ! ( ( $start == $pos ) || $this->is_white_space( $string[ $pos - 1 ] ) ) ) {
 //                            logger ("compensate part2?");
-						if ( $this->is_sentence_breaker( $string[ $pos + $num_len - 1 ], @$string[ $pos + $num_len ], @$string[ $pos + $num_len + 1 ] ) ) {
+						if ( $this->is_sentence_breaker( $string[ $pos + $num_len - 1 ] ?? '', $string[ $pos + $num_len ] ?? '', $string[ $pos + $num_len + 1 ] ?? '' ) ) {
 //                            logger ("compensate 3?");
 							$num_len --; //this makes the added number shorter by one, and the pos will be at a sentence breaker next so we don't have to compensate
 						}

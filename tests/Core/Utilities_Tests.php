@@ -273,4 +273,113 @@ class Utilities_Tests extends WP_UnitTestCase {
 		$this->assertEquals( "he", Utilities::get_language_from_url( "https://transposh.org/hello/test/?lang=he", $home_url ) );
 	}
 
+	/**
+	 * Run a callback while recording any E_WARNING, E_DEPRECATED or E_NOTICE it raises.
+	 * Diagnostics already silenced with @ are not recorded, so the kept @ suppressions don't count.
+	 *
+	 * @param callable $callback code to run
+	 *
+	 * @return array recorded diagnostics
+	 */
+	private function capture_diagnostics( $callback ) {
+		$diagnostics = array();
+		set_error_handler( static function ( $errno, $errstr ) use ( &$diagnostics ) {
+			if ( ! ( error_reporting() & $errno ) ) {
+				return true; // silenced by @, not ours to record
+			}
+			$diagnostics[] = $errno . ': ' . $errstr;
+
+			return true;
+		}, E_WARNING | E_DEPRECATED | E_NOTICE );
+		try {
+			$callback();
+		} finally {
+			restore_error_handler();
+		}
+
+		return $diagnostics;
+	}
+
+	public function testCleanupURLwithnopath() {
+		$homeurl = "https://example.com";
+		$result  = null;
+		$notices = $this->capture_diagnostics( static function () use ( $homeurl, &$result ) {
+			$result = Utilities::cleanup_url( "https://example.com", $homeurl );
+		} );
+		$this->assertEmpty( $notices );
+		$this->assertIsString( $result );
+		$this->assertStringContainsString( "example.com", $result );
+	}
+
+	public function testCleanupURLunparseable() {
+		$homeurl = "https://example.com";
+		$result  = null;
+		$notices = $this->capture_diagnostics( static function () use ( $homeurl, &$result ) {
+			$result = Utilities::cleanup_url( "http://:80", $homeurl );
+		} );
+		$this->assertEmpty( $notices );
+		$this->assertEquals( "http://:80", $result );
+	}
+
+	public function testGetLanguageFromURLnull() {
+		$result  = 'sentinel';
+		$notices = $this->capture_diagnostics( static function () use ( &$result ) {
+			$result = Utilities::get_language_from_url( null, "https://transposh.org" );
+		} );
+		$this->assertEmpty( $notices );
+		$this->assertFalse( $result );
+	}
+
+	public function testGetLanguageFromURLwithoutpath() {
+		$result  = 'sentinel';
+		$notices = $this->capture_diagnostics( static function () use ( &$result ) {
+			$result = Utilities::get_language_from_url( "https://transposh.org#frag", "https://transposh.org/blog" );
+		} );
+		$this->assertEmpty( $notices );
+		$this->assertFalse( $result );
+	}
+
+	public function testRewriteURLunparseable() {
+		$result  = 'sentinel';
+		$notices = $this->capture_diagnostics( static function () use ( &$result ) {
+			$result = Utilities::rewrite_url_lang_param( "http://:80", "https://transposh.org", true, "he", false );
+		} );
+		$this->assertEmpty( $notices );
+		$this->assertEquals( "http://:80", $result );
+	}
+
+	public function testRewriteURLwithquerybutnopath() {
+		$result  = 'sentinel';
+		$notices = $this->capture_diagnostics( static function () use ( &$result ) {
+			$result = Utilities::rewrite_url_lang_param( "https://transposh.org?lang=he", "https://transposh.org/blog/", true, "fr", false );
+		} );
+		$this->assertEmpty( $notices );
+		$this->assertEquals( "https://transposh.org/fr/", $result );
+	}
+
+	public function testPreferedLanguagenullheader() {
+		$result  = 'sentinel';
+		$notices = $this->capture_diagnostics( static function () use ( &$result ) {
+			$result = Utilities::prefered_language( array( 'en', 'he' ), 'en', null );
+		} );
+		$this->assertEmpty( $notices );
+		$this->assertEquals( "en", $result );
+	}
+
+	public function testWordpressUserByBynull() {
+		$result  = 'sentinel';
+		$notices = $this->capture_diagnostics( static function () use ( &$result ) {
+			$result = Utilities::wordpress_user_by_by( null );
+		} );
+		$this->assertEmpty( $notices );
+		$this->assertNull( $result );
+
+		$result = 'sentinel';
+		$notices = $this->capture_diagnostics( static function () use ( &$result ) {
+			$result = Utilities::wordpress_user_by_by( '' );
+		} );
+		$this->assertEmpty( $notices );
+		$this->assertEquals( "", $result );
+	}
+
 }
