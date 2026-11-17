@@ -3,7 +3,8 @@ import { test, expect, type Page } from '@playwright/test';
 // PHP diagnostics (wp-env runs with display_errors on) are rendered into the
 // HTML. Every issue fixed in this batch (e.g. #18 uninitialized string offset,
 // #21 just-in-time textdomain) was visible this way, so assert on them.
-const PHP_DIAGNOSTIC = /(Notice:|Warning:|Deprecated:|Fatal error:)/;
+// Tags are stripped first because html_errors renders "<b>Warning</b>:".
+const PHP_DIAGNOSTIC = /(?:Notice|Warning|Deprecated|Fatal error):/;
 
 function consoleErrorsOf(page: Page): string[] {
 	return (page as unknown as { __consoleErrors?: string[] }).__consoleErrors ?? [];
@@ -19,7 +20,8 @@ test.beforeEach(async ({ page }) => {
 });
 
 async function expectCleanPhp(html: string) {
-	const hits = html.match(new RegExp(PHP_DIAGNOSTIC.source + '[^<]{0,120}', 'g')) ?? [];
+	const text = html.replace(/<[^>]*>/g, '');
+	const hits = text.match(new RegExp(PHP_DIAGNOSTIC.source + '[^\\n]{0,120}', 'g')) ?? [];
 	expect(hits, `PHP diagnostics found in rendered HTML: ${hits.join(' | ')}`).toEqual([]);
 }
 
@@ -33,6 +35,8 @@ async function loginAsAdmin(page: Page) {
 	await page.fill('#user_login', 'qa_admin');
 	await page.fill('#user_pass', 'qa_admin_password_123');
 	await page.click('input[name="wp-submit"]');
+	// a failed login stays on wp-login.php; a successful one lands in wp-admin
+	await expect(page).toHaveURL(/wp-admin/);
 	await page.waitForLoadState('networkidle');
 }
 
@@ -120,8 +124,14 @@ test('translation edit mode loads for an administrator (#29, #31 surfaces)', asy
 
 test('admin settings page loads without diagnostics', async ({ page }) => {
 	await loginAsAdmin(page);
-	const response = await page.goto('/wp-admin/options-general.php?page=tp_modules');
+	// the settings pages hang off the plugin's own top-level menu, not options-general.php
+	const response = await page.goto('/wp-admin/admin.php?page=tp_settings');
 	expect([200, 302]).toContain(response?.status() ?? 0);
+	// a redirect back to the login page would also answer 200, so pin the destination
+	await expect(page).toHaveURL(/admin\.php\?page=tp_settings/);
+	// the settings form carries the transposh_nonce field (see docs/guides/security.md);
+	// it is a hidden input, so assert presence rather than visibility
+	await expect(page.locator('input[name="transposh_nonce"]')).toBeAttached();
 	await expectCleanPhp(await page.content());
 	await expectCleanConsole(page);
 });

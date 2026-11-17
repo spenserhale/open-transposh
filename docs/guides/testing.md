@@ -38,7 +38,14 @@ npm run env:start
 npx playwright test -c tests/e2e/playwright.config.ts
 ```
 
-The suite expects an administrator `qa_admin` (password in `tests/e2e/smoke.spec.ts`) and the plugin's widget in a classic-theme sidebar.
+The suite expects an administrator `qa_admin` (password in `tests/e2e/smoke.spec.ts`), the plugin's widget in a classic-theme sidebar, and French among the viewable languages. Set that up with `npx wp-env run cli` (not `npm run env run cli` — npm's script runner drops `--flags` unless preceded by `--`):
+
+```bash
+npx wp-env run cli wp user create qa_admin qa_admin@example.com --role=administrator --user_pass=...
+npx wp-env run cli wp theme activate twentytwenty
+npx wp-env run cli wp widget add transposh sidebar-1 --title=Languages
+npx wp-env run cli wp option update transposh_options --format=json '{"viewable_languages":"en,fr","default_language":"en"}'
+```
 
 ### Bare-metal fallback
 

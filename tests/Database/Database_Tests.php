@@ -61,17 +61,29 @@ class Database_Tests extends WP_UnitTestCase {
 	 * dbDelta() created the tables, filling the logs with "table doesn't exist" errors.
 	 */
 	public function testSetupDbCreatesMissingTablesWithoutQueryErrors() {
-		global $wpdb;
+		global $wpdb, $EZSQL_ERROR;
 		$translation_table     = $this->translation_table();
 		$translation_log_table = $this->translation_log_table();
 		$wpdb->query( "DROP TABLE IF EXISTS {$translation_table}" );
 		$wpdb->query( "DROP TABLE IF EXISTS {$translation_log_table}" );
+
+		// snapshot the recorded query errors: the SHOW TABLES assertions below would
+		// otherwise overwrite last_error and hide a missing-table error from setup (#27)
+		$errors_before = is_array( $EZSQL_ERROR ) ? count( $EZSQL_ERROR ) : 0;
 
 		$this->plugin->database->setup_db( true );
 
 		$this->assertSame( $translation_table, $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $translation_table ) ) );
 		$this->assertSame( $translation_log_table, $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $translation_log_table ) ) );
 		$this->assertSame( '', $wpdb->last_error );
+		// dbDelta() itself records a benign DESCRIBE error per table it creates (core probes the
+		// missing table first). The #27 regression this test pins is OUR code querying missing
+		// tables, so assert none of the newly recorded errors come from the setup queries.
+		$after_errors = is_array( $EZSQL_ERROR ) ? array_slice( $EZSQL_ERROR, $errors_before ) : array();
+		foreach ( $after_errors as $recorded_error ) {
+			$this->assertStringNotContainsString( 'SHOW INDEX', (string) $recorded_error['query'], 'setup_db() must not introspect indexes of missing tables (#27)' );
+			$this->assertStringNotContainsString( 'DROP PRIMARY KEY', (string) $recorded_error['query'], 'setup_db() must not alter missing tables (#27)' );
+		}
 	}
 
 	/**

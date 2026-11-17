@@ -62,7 +62,7 @@ You can find FAQs on the [Transposh site](https://transposh.org/faq)
 
 The plugin ships with a [wp-env](https://developer.wordpress.org/block-editor/reference-guides/packages/packages-env/) based Docker environment (see `.wp-env.json`), running the latest WordPress with PHP 8.4.
 
-Prerequisites: [Docker](https://www.docker.com/), Node.js, PHP and Composer on the host.
+Prerequisites: [Docker](https://www.docker.com/), Node.js, PHP and Composer on the host (PHP 8.3+ on the host: PHPUnit 12 requires it, and the container's PHP 8.4 does not apply to host `composer` commands).
 
 ```bash
 composer install   # PHP dependencies (tests, phpcs)
