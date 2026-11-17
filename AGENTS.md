@@ -5,9 +5,9 @@ Open Transposh is a WordPress plugin: a security-fixed, drop-in fork of the Tran
 
 ## Quick start
 - Install: `composer install`. Needed even to load the plugin: `open-transposh.php` requires `vendor/autoload.php`, and `vendor/` is not committed.
-- Test: `composer phpunit`. Needs a WordPress install around the checkout and a MySQL test database; see `docs/guides/testing.md`. Not run during setup, and `phpunit.xml.dist` uses attributes that PHPUnit 10 and later removed.
+- Test: `npm run test:php` (wp-env Docker; see `docs/guides/testing.md`). `composer phpunit` needs a bare-metal WordPress install and MySQL test database. Not run during setup.
 - Lint: no ruleset file. WordPress Coding Standards comes with `composer install`; check the files you change with `vendor/bin/phpcs --standard=WordPress <files>` (not run during setup).
-- Local site: `npx @wordpress/env start` uses `.wp-env.json` (PHP 8.4, this plugin mounted); not verified.
+- Local site and tests: `npm install && npm run env:start` uses `.wp-env.json` (PHP 8.4, this plugin mounted); dev site on :8888, test site on :8889.
 - Build and release: nothing to build locally. CI builds `main-built` on every push, and the version bump scripts in `build/` are broken; see `docs/guides/releasing.md`.
 
 ## Repo layout

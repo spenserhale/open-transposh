@@ -25,6 +25,7 @@ jobs:
           rm phpunit.xml.dist
           rm -rf docs
           rm -f AGENTS.md CLAUDE.md CHANGELOG.md
+          rm -f package.json package-lock.json
 
       - name: Composer Install
         run: |
