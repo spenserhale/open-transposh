@@ -411,7 +411,9 @@ class Database {
 				$translation = esc_sql( htmlspecialchars( stripslashes( rawurldecode( $trans ) ) ) );
 			}
 			if ( isset( $_POST["ln$i"] ) ) {
-				$lang = sanitize_text_field( wp_unslash( $_POST[ "ln$i" ] ) );
+				// esc_sql for the raw lang='$lang' interpolations below; sanitize alone keeps
+				// quotes, and wp_unslash removed the magic-quoting that used to guard them.
+				$lang = esc_sql( sanitize_text_field( wp_unslash( $_POST[ "ln$i" ] ) ) );
 			}
 			if ( isset( $_POST["sr$i"] ) ) {
 				$source = (int) $_POST[ "sr$i" ];

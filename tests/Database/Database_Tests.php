@@ -110,6 +110,48 @@ class Database_Tests extends WP_UnitTestCase {
 	 * key, MySQL would reject dbDelta's conversion while the full-column primary key
 	 * exists (error 1170).
 	 */
+	/**
+	 * The posted item language is interpolated into the raw WHERE/VALUES SQL: an
+	 * unescaped quote must not turn `(original=... AND lang=...)` into a match-all
+	 * that deletes every translation (Opus review of PR #35; reachable unauthenticated
+	 * through the nopriv OHT callback, which skips the editable-language check).
+	 */
+	public function testUpdateTranslationEscapesQuotesInPostedLanguage() {
+		global $wpdb;
+		$wpdb->insert(
+			$this->translation_table(),
+			array(
+				'original'      => 'Unrelated seed phrase',
+				'lang'          => 'de',
+				'translated'    => 'Unbezogene Saatphrase',
+				'translated_by' => 'auto',
+				'source'        => 1,
+			)
+		);
+		$_POST['items'] = '1';
+		$_POST['ln0']   = "fr' OR '1'='1";
+		$_POST['sr0']   = '1';
+		$_POST['tk0']   = 'Injected phrase';
+		$_POST['tr0']   = 'Phrase injectee';
+
+		// 'OHT' mirrors the unauthenticated callback path, where $by skips the permission gate.
+		$this->assertNull( $this->plugin->database->update_translation( 'OHT' ) );
+
+		$this->assertSame( '', $wpdb->last_error, 'the injected quote must not break or rewrite the query' );
+		// the seeded unrelated row must survive the DELETE whose WHERE clause was targeted
+		$this->assertSame(
+			'Unbezogene Saatphrase',
+			$wpdb->get_var( $wpdb->prepare( "SELECT translated FROM {$this->translation_table()} WHERE original = %s AND lang = %s", 'Unrelated seed phrase', 'de' ) )
+		);
+		// exactly the seed row and the one new item row exist - no mass effect
+		$this->assertSame(
+			2,
+			(int) $wpdb->get_var( "SELECT COUNT(*) FROM {$this->translation_table()}" )
+		);
+
+		unset( $_POST['items'], $_POST['ln0'], $_POST['sr0'], $_POST['tk0'], $_POST['tr0'] );
+	}
+
 	public function testSetupDbUpgradesLegacyTableWithPrimaryKey() {
 		global $wpdb;
 		$translation_table = $this->translation_table();
