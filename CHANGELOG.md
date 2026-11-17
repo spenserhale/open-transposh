@@ -19,3 +19,9 @@ Releases up to 2.1.7 predate this file; see the [GitHub releases](https://github
 - Google translation tokens are generated with the integer seed component explicitly; the computed token is unchanged and the float-string deprecation is gone (#20).
 - A failed PHP session start no longer feeds language-redirect logic; the plugin falls back to its no-session behavior (#33).
 - The `transposh` textdomain is loaded before the widget is constructed, so booting the plugin no longer triggers WordPress 6.7's `_load_textdomain_just_in_time` notice (#21).
+- Table setup creates the translation tables before introspecting their indexes, so a fresh install no longer logs `Table ... doesn't exist` query errors (#27).
+- Translation history joins the shared `$wpdb->users` table, fixing missing-users-table errors on multisite (#28).
+- History deletion rejects empty or malformed timestamps instead of building an invalid comparison; the queries are now prepared (#29).
+- A MySQL deadlock during a translation update is retried up to three times instead of failing silently (decision record 0002, #30).
+- The optional memcached connection is deferred to the first cache operation instead of running on every request (#32).
+- Posted translation parameters (`items`, `ln0`, `sr0`, `token`) are sanitized at read, completing the 2022 Plugin Directory review finding (#13).
