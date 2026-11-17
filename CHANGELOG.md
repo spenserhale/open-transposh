@@ -22,7 +22,7 @@ Releases up to 2.1.7 predate this file; see the [GitHub releases](https://github
 - Table setup creates the translation tables before introspecting their indexes, so a fresh install no longer logs `Table ... doesn't exist` query errors (#27).
 - Translation history joins the shared `$wpdb->users` table, fixing missing-users-table errors on multisite (#28).
 - History deletion rejects empty or malformed timestamps instead of building an invalid comparison; the queries are now prepared (#29).
-- A MySQL deadlock during a translation update is retried up to three times instead of failing silently (decision record 0002, #30).
+- A MySQL deadlock during a translation update is retried up to three times instead of failing silently, and its success effects (the `transposh_human_translation` action and the immediate backup) only run when the update actually persisted (#30).
 - The optional memcached connection is deferred to the first cache operation instead of running on every request (#32).
 - Posted translation parameters (`items`, `ln0`, `sr0`, `token`) are sanitized at read, completing the 2022 Plugin Directory review finding (#13).
 - An empty saved `widget_file` falls back to the default widget style before its assets are collected, removing uninitialized-offset warnings (#18).
