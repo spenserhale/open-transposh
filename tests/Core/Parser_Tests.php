@@ -30,7 +30,7 @@ class Parser_Tests extends WP_UnitTestCase {
 		$GLOBALS['logger']->show_caller = true;
 		$GLOBALS['logger']->set_debug_level( 5 );
 		$GLOBALS['logger']->eolprint = true;
-		$GLOBALS['logger']->printout = true;
+		$GLOBALS['logger']->printout = false;
 		$GLOBALS['logger']->set_log_file( "/tmp/phpunit.log" );
 		$this->object = new Parser;
 	}

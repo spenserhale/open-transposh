@@ -56,6 +56,42 @@ Technology has been thoroughly tested on a large dynamic site with millions of m
 
 You can find FAQs on the [Transposh site](https://transposh.org/faq)
 
+## Development
+
+### Local environment
+
+The plugin ships with a [wp-env](https://developer.wordpress.org/block-editor/reference-guides/packages/packages-env/) based Docker environment (see `.wp-env.json`), running the latest WordPress with PHP 8.4.
+
+Prerequisites: [Docker](https://www.docker.com/), Node.js, PHP and Composer on the host.
+
+```bash
+composer install   # PHP dependencies (tests, phpcs)
+npm install        # wp-env and test scripts
+npm run env:start  # start the Docker environment
+```
+
+- Development site: http://localhost:8888 (login: `admin` / `password`)
+- Test site: http://localhost:8889
+
+Other commands: `npm run env:stop`, `npm run env:destroy` (removes all containers/data).
+
+### Running the tests
+
+The PHPUnit integration tests (WordPress test suite via [wp-phpunit](https://github.com/wp-phpunit)) run inside the `tests-cli` container against an isolated tests database:
+
+```bash
+npm run test:php
+```
+
+The plugin is activated in the test bootstrap (`tests/bootstrap.php`), so its database tables exist before the first test runs.
+
+### Coding standards
+
+```bash
+vendor/bin/phpcs --standard=WordPress src/ tests/
+```
+
+
 ## Screenshots
 
 1. This is a screen shot of Transposh home page with the flagged widget on the right sidebar
