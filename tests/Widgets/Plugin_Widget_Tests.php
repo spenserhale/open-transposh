@@ -248,4 +248,27 @@ class Plugin_Widget_Tests extends WP_UnitTestCase {
 		$this->assertEmpty( $errors, 'Template rendering must not raise warnings, got: ' . implode( ', ', $errors ) );
 		$this->assertSame( $expected[ $template_class ], $output, 'Clean ASCII output must stay byte-identical' );
 	}
+
+	/**
+	 * esc_url renders & in query strings as the &#038; entity (browser-equivalent), the
+	 * templates must keep that entity and must not let a url attribute break out.
+	 */
+	#[DataProvider( 'widget_template_classes_provider' )]
+	public function testWidgetTemplatesEscapeQueryStringInUrls( string $template_class, string $template_file ) {
+		require_once $template_file;
+
+		$record        = self::clean_lang_record();
+		$record['url'] = 'https://example.com/en/?lang=xx&edit=1" onx="y';
+
+		[ $output, $errors ] = $this->with_transposh_plugin_global( static function () use ( $template_class, $record ): string {
+			ob_start();
+			$template_class::tp_widget_do( array( $record ) );
+
+			return (string) ob_get_clean();
+		} );
+
+		$this->assertEmpty( $errors, 'Template rendering must not raise warnings, got: ' . implode( ', ', $errors ) );
+		$this->assertStringContainsString( '&#038;', $output, 'esc_url encodes & in query strings as &#038;' );
+		$this->assertStringNotContainsString( ' onx="', $output, 'Attribute breakout via url must be escaped' );
+	}
 }

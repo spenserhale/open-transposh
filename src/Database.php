@@ -411,10 +411,10 @@ class Database {
 				$translation = esc_sql( htmlspecialchars( stripslashes( rawurldecode( $trans ) ) ) );
 			}
 			if ( isset( $_POST["ln$i"] ) ) {
-				$lang = $_POST["ln$i"];
+				$lang = sanitize_text_field( wp_unslash( $_POST[ "ln$i" ] ) );
 			}
 			if ( isset( $_POST["sr$i"] ) ) {
-				$source = $_POST["sr$i"];
+				$source = (int) $_POST[ "sr$i" ];
 			}
 
 			// we attempt to avoid
@@ -468,6 +468,11 @@ class Database {
 			// the rows are still locked by another transaction, pause briefly before restarting.
 			usleep( 50000 );
 		}
+		// a failed sequence is reported once, after the last attempt, a mid-retry header would mark a later successful attempt as 404.
+		if ( ! $updated ) {
+			LogService::legacy_log( $GLOBALS['wpdb']->last_error, 1 );
+			header( "HTTP/1.0 404 Failed to update language database " . $GLOBALS['wpdb']->last_error );
+		}
 
 		// if its a human translation we will call the action, this takes the assumption of a single human translation in
 		// a function call, which should probably be verified (FIXME move up?)
@@ -507,7 +512,6 @@ class Database {
 		if ( $copyresult === false ) {
 			LogService::legacy_log( $GLOBALS['wpdb']->last_error, 1 );
 			LogService::legacy_log( "Error !!! failed to move to log $delvalues,", 1 );
-			header( "HTTP/1.0 404 Failed to update language database " . $GLOBALS['wpdb']->last_error );
 
 			return false;
 		}
@@ -519,7 +523,6 @@ class Database {
 		if ( $delresult === false ) {
 			LogService::legacy_log( $GLOBALS['wpdb']->last_error, 1 );
 			LogService::legacy_log( "Error !!! failed remove $delvalues,", 1 );
-			header( "HTTP/1.0 404 Failed to update language database " . $GLOBALS['wpdb']->last_error );
 
 			return false;
 		}
@@ -537,28 +540,21 @@ class Database {
 		}
 		LogService::legacy_log( $GLOBALS['wpdb']->last_error, 1 );
 		LogService::legacy_log( "Error !!! failed to insert to db $values,", 1 );
-		header( "HTTP/1.0 404 Failed to update language database " . $GLOBALS['wpdb']->last_error );
 
 		return false;
 	}
 
 	/**
 	 * Does the last database error report a MySQL deadlock (error 1213) or a lock wait
-	 * timeout (error 1205)? $wpdb does not surface the numeric error code, so the message
-	 * text is matched case-insensitively.
+	 * timeout (error 1205)? Both message texts carry "try restarting transaction",
+	 * $wpdb exposes no numeric code, so that shared phrase is matched case-insensitively.
 	 *
 	 * @return bool true when the failed sequence may be retried
 	 */
 	private function last_error_is_deadlock(): bool {
 		$last_error = (string) $GLOBALS['wpdb']->last_error;
-		if ( '' === $last_error ) {
-			return false;
-		}
-		if ( stripos( $last_error, 'deadlock' ) !== false && stripos( $last_error, 'try restarting transaction' ) !== false ) {
-			return true;
-		}
 
-		return (bool) preg_match( '/\b(?:1213|1205)\b/', $last_error );
+		return false !== stripos( $last_error, 'try restarting transaction' );
 	}
 
 	/*
@@ -907,6 +903,15 @@ SQL;
 			update_option( self::TRANSPOSH_OPTIONS_DBSETUP, time() );
 
 			LogService::legacy_log( "Attempting to create table {$this->translation_table}", 1 );
+			// Drop a leftover primary key from older schema versions before dbDelta widens the
+			// column (MySQL error 1170), the new schema has none. Existence-checked so fresh
+			// installs never query missing tables (#27, upgrade path from pre-2.0 schemas).
+			if ( $GLOBALS['wpdb']->get_var( $GLOBALS['wpdb']->prepare( 'SHOW TABLES LIKE %s', $this->translation_table ) ) === $this->translation_table ) {
+				$rows = $GLOBALS['wpdb']->get_results( "SHOW INDEX FROM {$this->translation_table} WHERE key_name = 'PRIMARY'" );
+				if ( count( $rows ) ) {
+					$GLOBALS['wpdb']->query( "ALTER TABLE {$this->translation_table} DROP PRIMARY KEY" );
+				}
+			}
 			// notice - keep every field on a new line or dbdelta fails
 			$sql = "CREATE TABLE {$this->translation_table} (
                     original TEXT NOT NULL, 
@@ -918,13 +923,7 @@ SQL;
                     KEY original (original(6),lang)
                     ) DEFAULT CHARSET=utf8 COLLATE=utf8_bin";
 
-			// create the table before looking at its indexes, on a fresh install the SHOW INDEX below would query a missing table (issue #27).
 			dbDelta( $sql );
-			// a leftover primary key from older schema versions must go, the new schema has none.
-			$rows = $GLOBALS['wpdb']->get_results( "SHOW INDEX FROM {$this->translation_table} WHERE key_name = 'PRIMARY'" );
-			if ( count( $rows ) ) {
-				$GLOBALS['wpdb']->query( "ALTER TABLE {$this->translation_table} DROP PRIMARY KEY" );
-			}
 			if ( $GLOBALS['wpdb']->charset === 'utf8mb4' ) {
 				LogService::legacy_log( "charset is utfmb4: " . $GLOBALS['wpdb']->charset );
 				$GLOBALS['wpdb']->query( "ALTER TABLE {$this->translation_table} CONVERT TO CHARSET utf8mb4 COLLATE utf8mb4_bin" );
@@ -933,6 +932,14 @@ SQL;
 				$GLOBALS['wpdb']->query( "ALTER TABLE {$this->translation_table} CONVERT TO CHARSET utf8 COLLATE utf8_bin" );
 			}
 			LogService::legacy_log( "Attempting to create table {$this->translation_log_table}", 1 );
+			// same as above, drop a leftover primary key before dbDelta widens the column,
+			// existence-checked so fresh installs never query missing tables (#27).
+			if ( $GLOBALS['wpdb']->get_var( $GLOBALS['wpdb']->prepare( 'SHOW TABLES LIKE %s', $this->translation_log_table ) ) === $this->translation_log_table ) {
+				$rows = $GLOBALS['wpdb']->get_results( "SHOW INDEX FROM {$this->translation_log_table} WHERE key_name = 'PRIMARY'" );
+				if ( count( $rows ) ) {
+					$GLOBALS['wpdb']->query( "ALTER TABLE {$this->translation_log_table} DROP PRIMARY KEY" );
+				}
+			}
 			// notice - keep every field on a new line or dbdelta fails
 			// this should be removed in a far future...
 			$sql = "CREATE TABLE {$this->translation_log_table} (
@@ -946,11 +953,6 @@ SQL;
                     ) DEFAULT CHARSET=utf8 COLLATE=utf8_bin";
 
 			dbDelta( $sql );
-			// same as above, drop a leftover primary key only once the table exists.
-			$rows = $GLOBALS['wpdb']->get_results( "SHOW INDEX FROM {$this->translation_log_table} WHERE key_name = 'PRIMARY'" );
-			if ( count( $rows ) ) {
-				$GLOBALS['wpdb']->query( "ALTER TABLE {$this->translation_log_table} DROP PRIMARY KEY" );
-			}
 			if ( $GLOBALS['wpdb']->charset === 'utf8mb4' ) {
 				$GLOBALS['wpdb']->query( "ALTER TABLE {$this->translation_log_table} CONVERT TO CHARSET utf8mb4 COLLATE utf8mb4_bin" );
 			} else {

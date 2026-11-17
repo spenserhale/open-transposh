@@ -36,7 +36,10 @@ class Ajax_Controller {
 		if ( ! isset( $_POST['token'], $_POST['lang'] ) ) {
 			wp_send_json_error( 'missing params' );
 		}
-		$token = sanitize_text_field( stripslashes( $_POST['token'] ) );
+		// the token is a lookup key for the original phrase, not display text - sanitizing
+		// it would mangle tags, octets and whitespace inside real phrases and make the
+		// history lookup miss, downstream SQL already uses prepare()/esc_sql().
+		$token = wp_unslash( $_POST['token'] );
 		$lang  = sanitize_text_field( $_POST['lang'] );
 		// an empty timestamp means a history fetch, not a deletion, and an empty deletion
 		// request must never reach the database (issue #29).

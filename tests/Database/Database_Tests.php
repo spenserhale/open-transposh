@@ -105,6 +105,44 @@ class Database_Tests extends WP_UnitTestCase {
 	}
 
 	/**
+	 * The upgrade path from pre-2.0 schemas: a table still carrying the legacy
+	 * VARCHAR(255) primary key must get the widened TEXT column and lose the primary
+	 * key, MySQL would reject dbDelta's conversion while the full-column primary key
+	 * exists (error 1170).
+	 */
+	public function testSetupDbUpgradesLegacyTableWithPrimaryKey() {
+		global $wpdb;
+		$translation_table = $this->translation_table();
+		$wpdb->query( "DROP TABLE IF EXISTS {$translation_table}" );
+		// the current create statement from setup_db(), with original as VARCHAR(255)
+		// and the 2010-era full-column primary key.
+		$wpdb->query( "CREATE TABLE {$translation_table} (
+                    original VARCHAR(255) NOT NULL,
+                    lang CHAR(5) NOT NULL,
+                    translated TEXT,
+                    translated_by VARCHAR(45),
+                    source TINYINT NOT NULL,
+                    timestamp TIMESTAMP,
+                    PRIMARY KEY (original,lang),
+                    KEY original (original(6),lang)
+                    ) DEFAULT CHARSET=utf8 COLLATE=utf8_bin" );
+		// setup_db( $force = true ) reruns the schema setup even when the db version matches.
+		$this->plugin->database->setup_db( true );
+
+		$original_column = $wpdb->get_row( "SHOW COLUMNS FROM {$translation_table} LIKE 'original'" );
+		// charset conversion servers (MariaDB) report the widened column as mediumtext,
+		// what matters is the TEXT family - the legacy VARCHAR(255) must be gone.
+		$this->assertStringContainsString( 'text', (string) $original_column->Type );
+		$this->assertStringNotContainsString( 'varchar', (string) $original_column->Type );
+		$this->assertCount( 0, $wpdb->get_results( "SHOW INDEX FROM {$translation_table} WHERE Key_name='PRIMARY'" ) );
+		$this->assertSame( '', $wpdb->last_error );
+
+		// leave the normal schema behind for the rest of the suite
+		$wpdb->query( "DROP TABLE IF EXISTS {$translation_table}" );
+		$this->plugin->database->setup_db( true );
+	}
+
+	/**
 	 * The update sequence behind the Ajax path must still insert, archive and overwrite.
 	 */
 	public function testUpdateTranslationAppliesNewHumanTranslationAndArchivesOldValue() {
@@ -153,6 +191,9 @@ class Database_Tests extends WP_UnitTestCase {
 	#[DataProvider( 'invalidTimestampProvider' )]
 	public function testDeleteHistoryRejectsBadTimestamps( string $bad_timestamp ) {
 		global $wpdb;
+		// 1 is the admin user created by the test installer, with a current user only the
+		// timestamp guard can reject, the permission check alone would fail the call first.
+		wp_set_current_user( 1 );
 		$this->seed_log_row( 'Delete guard original', 'Guarded', '2024-01-02 03:04:05' );
 		$this->seed_log_row( 'Delete guard second', 'Also guarded', '2024-03-04 05:06:07' );
 
@@ -228,6 +269,7 @@ class Database_Tests extends WP_UnitTestCase {
 	 * stay safe no-ops instead of erroring on a failed connection attempt.
 	 */
 	public function testCacheOperationsStaySafeWhenMemcacheUnavailable() {
+		// Without the Memcache extension installed a skipped connect is unobservable here, only the lazy flag and the safe no-op fallback can be checked.
 		$database = new Database( $this->plugin );
 
 		$attempted = new \ReflectionProperty( Database::class, 'memcache_connect_attempted' );
@@ -239,6 +281,31 @@ class Database_Tests extends WP_UnitTestCase {
 		$database->cache_delete( 'never-stored-key', 'en' );
 		$database->cache_clean();
 		$this->addToAssertionCount( 1 );
+	}
+
+	/**
+	 * The retry guard must match the message text of both MySQL lock errors (deadlock
+	 * 1213 and lock-wait timeout 1205), $wpdb exposes no numeric code.
+	 */
+	public function testLastErrorIsDeadlockMatchesBothMysqlLockErrorMessages() {
+		global $wpdb;
+		$database = new Database( $this->plugin );
+		$method   = new \ReflectionMethod( Database::class, 'last_error_is_deadlock' );
+		$method->setAccessible( true );
+
+		$real_last_error = $wpdb->last_error;
+		try {
+			$wpdb->last_error = 'Deadlock found when trying to get lock; try restarting transaction';
+			$this->assertTrue( $method->invoke( $database ) );
+			$wpdb->last_error = 'Lock wait timeout exceeded; try restarting transaction';
+			$this->assertTrue( $method->invoke( $database ) );
+			$wpdb->last_error = "Table 'test_translations' doesn't exist";
+			$this->assertFalse( $method->invoke( $database ) );
+			$wpdb->last_error = '';
+			$this->assertFalse( $method->invoke( $database ) );
+		} finally {
+			$wpdb->last_error = $real_last_error;
+		}
 	}
 
 	private function seed_log_row( string $original, string $translated, string $timestamp ): void {

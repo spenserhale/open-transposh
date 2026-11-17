@@ -111,8 +111,6 @@ class Plugin {
 		$this->options         = new Plugin_Options();
 		$this->database        = new Database( $this );
 		$this->admin           = new Plugin_Admin( $this );
-		// loaded early so the widget's translated description does not trigger just-in-time loading (WP 6.7+).
-		load_plugin_textdomain( TRANSPOSH_TEXT_DOMAIN, false, dirname( plugin_basename( __FILE__ ) ) . '/langs' );
 		$this->widget          = new Plugin_Widget( $this );
 		$this->postpublish     = new Post_Publish( $this );
 		$this->third_party     = new Integrations( $this );
@@ -422,6 +420,9 @@ class Plugin {
 				$this->home_url
 			);
 		}
+
+		// load translation files for transposh
+		load_plugin_textdomain( TRANSPOSH_TEXT_DOMAIN, false, dirname( plugin_basename( __FILE__ ) ) . '/langs' );
 
 		//set the callback for translating the page when it's done
 		ob_start( [ &$this, "process_page" ] );
