@@ -23,6 +23,8 @@ jobs:
           rm -rf build
           rm -rf tests
           rm phpunit.xml.dist
+          rm -rf docs
+          rm -f AGENTS.md CLAUDE.md CHANGELOG.md
 
       - name: Composer Install
         run: |
