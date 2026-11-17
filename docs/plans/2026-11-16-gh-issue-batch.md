@@ -1,7 +1,7 @@
 ---
 title: "Plan: Fix the reported GitHub issues (security review + Rollbar deprecations)"
 description: "Fix issues #13–#33 (sanitize/escape findings and PHP 8.1+ runtime defects), close #25 and #34 as verified no-ops, validate with PHPUnit and Playwright."
-status: in-progress
+status: done
 date: 2026-11-16
 size: bounded
 specs: []
