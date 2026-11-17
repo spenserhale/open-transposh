@@ -29,13 +29,26 @@ npm run test:php   # ./vendor/bin/phpunit inside tests-cli
 
 The suite drops every table with the `wptests_` prefix in the tests database. The wp-env tests database is dedicated to this; never point a bare-metal run at a database a real site uses.
 
+### End-to-end smoke tests
+
+`tests/e2e/` holds a Playwright suite that drives the dev site on :8888 and fails on any PHP notice, warning, or deprecation rendered into the HTML (wp-env displays errors), on browser console errors, and on a missing language switcher. It needs `@playwright/test` (`npm install`) and its Chromium once (`npx playwright install chromium`):
+
+```bash
+npm run env:start
+npx playwright test -c tests/e2e/playwright.config.ts
+```
+
+The suite expects an administrator `qa_admin` (password in `tests/e2e/smoke.spec.ts`) and the plugin's widget in a classic-theme sidebar.
+
 ### Bare-metal fallback
 
 Without Docker, provide a WordPress install and an empty test database: place the checkout at `<wordpress>/wp-content/plugins/<folder>/` (`tests/wp-tests-config.php` sets `ABSPATH` four directories up) and run `composer phpunit`. The config reads `WORDPRESS_DB_*` environment variables when set and otherwise connects to database `wp_tests` as user `wp` with password `wp` on `127.0.0.1`. For other paths or credentials, copy `phpunit.xml.dist` to `phpunit.xml` (gitignored) and point `WP_PHPUNIT__TESTS_CONFIG` at your own config file.
 
 ## Known problems
 
-- Only `Parser` and `Utilities` have tests (27 test methods in `tests/Core/`).
+- `Parser`, `Utilities`, `Plugin`, `Database`, and `Widgets` have integration tests (`tests/Core/`, `tests/Plugin/`, `tests/Database/`, `tests/Widgets/`); the other src areas have none.
+- The whole suite must override `WP_UnitTestCase::setUp()` with an empty body: the pinned wp-phpunit library calls a PHPUnit 12 API that no longer exists, and a `parent::setUp()` call fatals. Existing and new tests follow this convention.
+- The Playwright smoke suite (`tests/e2e/`) needs the dev environment running and a `qa_admin` administrator; see `tests/e2e/smoke.spec.ts`.
 
 ## Related docs
 

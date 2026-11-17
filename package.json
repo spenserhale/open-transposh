@@ -13,6 +13,7 @@
     "test:php:install": "wp-env run tests-cli --env-cwd=wp-content/plugins/open-transposh composer install"
   },
   "devDependencies": {
+    "@playwright/test": "^1.65.1",
     "@wordpress/env": "^12.1.0"
   }
 }
