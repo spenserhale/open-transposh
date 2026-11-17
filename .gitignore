@@ -1,4 +1,7 @@
 /vendor/
+/node_modules/
+.phpunit.cache/
+.phpunit.result.cache
 phpunit.xml
 
 # Log files

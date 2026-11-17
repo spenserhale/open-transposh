@@ -16,3 +16,7 @@ tests_add_filter( 'muplugins_loaded', function() {
 
 // Start up the WP testing environment.
 require getenv( 'WP_PHPUNIT__DIR' ) . '/includes/bootstrap.php';
+
+// Activate the plugin so activation routines (table creation, options) run
+// before the first test, instead of lazily mid-run.
+activate_plugin( plugin_basename( dirname( __DIR__ ) . '/open-transposh.php' ) );
