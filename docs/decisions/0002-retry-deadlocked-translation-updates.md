@@ -24,7 +24,7 @@ We will retry the existing three-statement sequence in place (option 2), because
 
 ## Consequences
 
-- A deadlocked update no longer silently loses the translation while reporting success: after 3 exhausted attempts the error is logged and a `HTTP/1.0 404` status header is sent to the browser. `update_translation()` still returns null and the `transposh_human_translation` action still fires (pre-existing behavior), so the status header - not a return value - is the failure signal today.
+- A deadlocked update no longer silently loses the translation while reporting success: after 3 exhausted attempts the error is logged and a `HTTP/1.0 404` status header is sent to the browser. The `transposh_human_translation` action and the immediate backup only run when the update actually persisted (review round 2); on failure the status header - not a return value - is the failure signal.
 - History may gain a duplicate row when a retry partially applies; accepted over losing the edit.
 - No transaction management is introduced; if a future change needs true atomicity, it must supersede this record.
 

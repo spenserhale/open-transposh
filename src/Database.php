@@ -396,6 +396,7 @@ class Database {
 		$backup_immidiate_possible = false;
 		$firstitem                 = true;
 		$alreadybatched            = array();
+		$invalidate_keys           = array();
 		// We are now processing all posted items
 		for ( $i = 0; $i < $items; $i ++ ) {
 			if ( isset( $_POST["tk$i"] ) ) {
@@ -453,6 +454,7 @@ class Database {
 
 			// If we have caching - we remove previous entry from cache
 			$this->cache_delete( $original, $lang );
+			$invalidate_keys[] = array( $original, $lang );
 			$firstitem = false;
 			// TODO - maybe store value here?
 		}
@@ -474,17 +476,23 @@ class Database {
 		if ( ! $updated ) {
 			LogService::legacy_log( $GLOBALS['wpdb']->last_error, 1 );
 			header( "HTTP/1.0 404 Failed to update language database " . $GLOBALS['wpdb']->last_error );
+		} else {
+			// a read during a retry pause may have re-cached the overwritten row, invalidate again after the write
+			foreach ( $invalidate_keys as [ $cache_original, $cache_lang ] ) {
+				$this->cache_delete( $cache_original, $cache_lang );
+			}
 		}
 
 		// if its a human translation we will call the action, this takes the assumption of a single human translation in
 		// a function call, which should probably be verified (FIXME move up?)
-		if ( $source == 0 ) {
+		// success effects only run when the update persisted, a failed update must not fire them
+		if ( $updated && $source == 0 ) {
 			do_action( 'transposh_human_translation', $translation, $original, $lang, $loguser );
 		}
 
 		// TODO: move this to an action
 		// Should we backup now?
-		if ( $backup_immidiate_possible && $this->transposh->options->transposh_backup_schedule == 2 ) {
+		if ( $updated && $backup_immidiate_possible && $this->transposh->options->transposh_backup_schedule == 2 ) {
 			return $this->transposh->run_backup();
 		}
 		// this is a termination for the ajax sequence
