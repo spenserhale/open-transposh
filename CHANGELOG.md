@@ -15,3 +15,7 @@ Releases up to 2.1.7 predate this file; see the [GitHub releases](https://github
 - Language detection handles a null request URL and an absent `Accept-Language` header without passing null to `parse_url()`/`preg_match_all()` (#19, #23).
 - Rendering translation history with a missing author no longer passes null to `str_contains()` (#31).
 - The parser no longer reads past the end of a text segment when a number ends the string, e.g. `B2,` (#26).
+- Splitting a pathless URL for language detection no longer passes null to `explode()` (#22).
+- Google translation tokens are generated with the integer seed component explicitly; the computed token is unchanged and the float-string deprecation is gone (#20).
+- A failed PHP session start no longer feeds language-redirect logic; the plugin falls back to its no-session behavior (#33).
+- The `transposh` textdomain is loaded before the widget is constructed, so booting the plugin no longer triggers WordPress 6.7's `_load_textdomain_just_in_time` notice (#21).
