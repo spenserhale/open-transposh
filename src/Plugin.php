@@ -585,11 +585,13 @@ class Plugin {
 		     ! ( $this->is_special_page( Utilities::get_clean_server_var( 'REQUEST_URI' ) ) || ( Utilities::get_clean_server_var( 'HTTP_REFERER' ) != null && str_contains( Utilities::get_clean_server_var( 'HTTP_REFERER' ), $this->home_url ) ) ) &&
 		     ! ( Utilities::is_bot() ) ) {
 			// we are starting a session if needed
+			$session_started = true;
 			if ( ! session_id() ) {
-				session_start();
+				$session_started = @session_start();
 			}
 			// no redirections if we already redirected in this session or we suspect cyclic redirections
-			if ( ! isset( $_SESSION['TR_REDIRECTED'] ) && ! ( Utilities::get_clean_server_var( 'HTTP_REFERER' ) == Utilities::get_clean_server_var( 'REQUEST_URI' ) ) ) {
+			// Skip it all when the session failed to start, there is nowhere to store the state.
+			if ( $session_started && ! isset( $_SESSION['TR_REDIRECTED'] ) && ! ( Utilities::get_clean_server_var( 'HTTP_REFERER' ) == Utilities::get_clean_server_var( 'REQUEST_URI' ) ) ) {
 				LogService::legacy_log( 'session redirection never happened (yet)', 2 );
 				// we redirect once per session
 				$_SESSION['TR_REDIRECTED'] = true;
@@ -966,7 +968,11 @@ class Plugin {
 		//}
 		//$href = substr($href, strlen($this->home_url));
 		// this might include the sub directory for non rooted sites, but its not that important to avoid
-		$href  = parse_url( $href, PHP_URL_PATH );
+		$href = parse_url( $href, PHP_URL_PATH );
+		if ( null === $href || false === $href ) {
+			// no path in the url means no segments to inspect.
+			$href = '';
+		}
 		$parts = explode( '/', $href );
 		foreach ( $parts as $part ) {
 			if ( ! $part || is_numeric( $part ) ) {
@@ -1916,7 +1922,8 @@ class Plugin {
 		}
 		$x = $value % 1E6;
 
-		return $x . "." . ( $x ^ $error );
+		// The XOR uses the integer seed part, matching PHP's historical implicit truncation of the dotted seed string.
+		return $x . "." . ( $x ^ (int) $e[0] );
 	}
 
 // Proxied translation for google translate

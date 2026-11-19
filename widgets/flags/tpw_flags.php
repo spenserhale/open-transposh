@@ -24,9 +24,9 @@ class tpw_flags extends Base_Widget {
 
 		echo "<div class=\"" . NO_TRANSLATE_CLASS . " transposh_flags\" >";
 		foreach ( $args as $language_record ) {
-			echo "<a href=\"{$language_record['url']}\"" . ( $language_record['active'] ? ' class="tr_active"' : '' ) . '>' .
-			     Utilities::display_flag( "$plugin_path/img/flags", $language_record['flag'], $language_record['langorig'], false ) .
-			     "</a>";
+			echo '<a href="' . esc_url( $language_record['url'] ) . '"' . ( $language_record['active'] ? ' class="tr_active"' : '' ) . '>' .
+			     Utilities::display_flag( esc_url( "$plugin_path/img/flags" ), esc_attr( $language_record['flag'] ), esc_attr( $language_record['langorig'] ), false ) .
+			     '</a>';
 		}
 		echo "</div>";
 	}

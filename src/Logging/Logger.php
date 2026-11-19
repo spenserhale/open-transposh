@@ -31,7 +31,8 @@ class Logger {
 
 	public function __construct() {
 		// If not outputting to stdout, we should buffer so firephp will work
-		if ( ! $this->printout ) {
+		// (skipped for CLI runs such as tests, where the buffer would never be closed or used)
+		if ( ! $this->printout && 'cli' !== php_sapi_name() ) {
 			ob_start();
 		}
 	}

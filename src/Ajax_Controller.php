@@ -30,12 +30,23 @@ class Ajax_Controller {
 	 */
 	public function handle_translation_history() {
 		self::send_headers();
-		$token = stripslashes( $_POST['token'] );
-		$lang = sanitize_text_field( $_POST['lang'] );
-		if ( isset( $_POST['timestamp'] ) ) {
-			$result = $this->plugin->database->del_translation_history(
-				$token, $lang, sanitize_text_field( $_POST['timestamp'] )
-			);
+		// This public endpoint serves the front-end editor without a nonce, permissions are
+		// enforced per request below, so the nonce sniff is disabled for the posted input.
+		// phpcs:disable WordPress.Security.NonceVerification.Missing
+		if ( ! isset( $_POST['token'], $_POST['lang'] ) ) {
+			wp_send_json_error( 'missing params' );
+		}
+		// the token is a lookup key for the original phrase, not display text - sanitizing
+		// it would mangle tags, octets and whitespace inside real phrases and make the
+		// history lookup miss, downstream SQL already uses prepare()/esc_sql().
+		$token = wp_unslash( $_POST['token'] );
+		$lang  = sanitize_text_field( $_POST['lang'] );
+		// an empty timestamp means a history fetch, not a deletion, and an empty deletion
+		// request must never reach the database (issue #29).
+		$timestamp = isset( $_POST['timestamp'] ) ? sanitize_text_field( wp_unslash( $_POST['timestamp'] ) ) : '';
+		// phpcs:enable
+		if ( '' !== $timestamp ) {
+			$result = $this->plugin->database->del_translation_history( $token, $lang, $timestamp );
 			if ( $result ) {
 				wp_send_json_success();
 			} else {

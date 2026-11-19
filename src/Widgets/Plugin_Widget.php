@@ -26,13 +26,17 @@ class Plugin_Widget extends WP_Widget {
 	public function __construct(?Plugin $transposh = null) {
 		$this->transposh = $transposh ?? Plugin::get_instance();
 
-		// Widget control defenitions
+		// Widget control defenitions. The name and description stay untranslated here and
+		// are translated in translate_widget_strings() instead: this constructor runs at
+		// plugins_loaded, before init, and __() that early triggers WordPress 6.7's
+		// just-in-time textdomain notice on locales without a plugin .mo file (issue #21).
 		$widget_ops  = array(
 			'classname'   => 'widget_transposh',
-			'description' => __( 'Open Transposh language selection widget', TRANSPOSH_TEXT_DOMAIN )
+			'description' => 'Open Transposh language selection widget'
 		);
 		$control_ops = array( 'width' => 200, 'height' => 300 );
-		parent::__construct( 'transposh', __( 'Open Transposh' ), $widget_ops, $control_ops );
+		parent::__construct( 'transposh', 'Open Transposh', $widget_ops, $control_ops );
+		add_action( 'wp_loaded', [ $this, 'translate_widget_strings' ] );
 
 		add_action( 'widgets_init', static function () {
 			register_widget( Plugin_Widget::class );
@@ -45,6 +49,16 @@ class Plugin_Widget extends WP_Widget {
 				add_action( 'wp_print_scripts', array( &$this, 'add_transposh_widget_js' ) );
 			}
 		}
+	}
+
+	/**
+	 * Translate the widget name and description once WordPress localization is up, so no
+	 * translation is requested before init (issue #21). wp_loaded runs after both this
+	 * class's construction paths (plugins_loaded here, widgets_init via register_widget()).
+	 */
+	public function translate_widget_strings(): void {
+		$this->name                          = __( 'Open Transposh', TRANSPOSH_TEXT_DOMAIN );
+		$this->widget_options['description'] = __( 'Open Transposh language selection widget', TRANSPOSH_TEXT_DOMAIN );
 	}
 
 	/**
@@ -147,7 +161,12 @@ class Plugin_Widget extends WP_Widget {
 		$settings      = $this->get_settings();
 		foreach ( $settings as $key => $value ) {
 			if ( is_active_widget( false, $this->id_base . '-' . $key, $this->id_base ) ) {
-				$activewidgets[ $value['widget_file'] ] = true;
+				// Mirror the load_widget() fallback: empty saved filenames load the default widget.
+				$widget_file = $value['widget_file'] ?? '';
+				if ( '' === $widget_file ) {
+					$widget_file = 'default/tpw_default.php';
+				}
+				$activewidgets[ $widget_file ] = true;
 			}
 		}
 
@@ -175,7 +194,12 @@ class Plugin_Widget extends WP_Widget {
 		$settings      = $this->get_settings();
 		foreach ( $settings as $key => $value ) {
 			if ( is_active_widget( false, $this->id_base . '-' . $key, $this->id_base ) ) {
-				$activewidgets[ $value['widget_file'] ] = true;
+				// Mirror the load_widget() fallback: empty saved filenames load the default widget.
+				$widget_file = $value['widget_file'] ?? '';
+				if ( '' === $widget_file ) {
+					$widget_file = 'default/tpw_default.php';
+				}
+				$activewidgets[ $widget_file ] = true;
 			}
 		}
 

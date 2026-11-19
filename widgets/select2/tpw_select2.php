@@ -20,7 +20,7 @@ class tpw_select2 extends Base_Widget {
 		echo '<select style="width:100%" name="lang" class="tp_lang2" onchange="document.location.href=this.options[this.selectedIndex].value;">';
 		foreach ( $args as $langrecord ) {
 			$is_selected = $langrecord['active'] ? " selected=\"selected\"" : "";
-			echo "<option value=\"{$langrecord['url']}\" data-flag=\"{$langrecord['flag']}\" data-lang=\"{$langrecord['lang']}\"{$is_selected}>{$langrecord['langorig']}</option>";
+			echo '<option value="' . esc_url( $langrecord['url'] ) . '" data-flag="' . esc_attr( $langrecord['flag'] ) . '" data-lang="' . esc_attr( $langrecord['lang'] ) . "\"{$is_selected}>" . esc_html( $langrecord['langorig'] ) . '</option>';
 		}
 		echo "</select><br/>";
 

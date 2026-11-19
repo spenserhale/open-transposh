@@ -37,10 +37,14 @@ define( 'WP_DEBUG', true );
  * DO NOT use a production database or one that is shared with something else.
  */
 
-define( 'DB_NAME', 'wp_tests' );
-define( 'DB_USER', 'wp' );
-define( 'DB_PASSWORD', 'wp' );
-define( 'DB_HOST', '127.0.0.1' );
+/*
+ * Prefer the WORDPRESS_DB_* variables provided by wp-env containers, which
+ * point at the dedicated tests database. Fall back to bare-metal defaults.
+ */
+define( 'DB_NAME', getenv( 'WORDPRESS_DB_NAME' ) ?: 'wp_tests' );
+define( 'DB_USER', getenv( 'WORDPRESS_DB_USER' ) ?: 'wp' );
+define( 'DB_PASSWORD', getenv( 'WORDPRESS_DB_PASSWORD' ) ?: 'wp' );
+define( 'DB_HOST', getenv( 'WORDPRESS_DB_HOST' ) ?: '127.0.0.1' );
 define( 'DB_CHARSET', 'utf8' );
 define( 'DB_COLLATE', '' );
 

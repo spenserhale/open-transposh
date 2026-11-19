@@ -74,6 +74,10 @@ class Utilities {
 	public static function cleanup_url( $url, $home_url, $remove_host = false ) {
 
 		$parsedurl = @parse_url( $url );
+		// if we can't parse the url, we won't touch it.
+		if ( ! is_array( $parsedurl ) ) {
+			return $url;
+		}
 		//cleanup previous lang & edit parameter from url
 
 		if ( isset( $parsedurl['query'] ) ) {
@@ -97,14 +101,14 @@ class Utilities {
 		//cleanup lang identifier in permalinks
 		//remove the language from the url permalink (if in start of path, and is a defined language)
 		$home_path = rtrim( (string) @parse_url( $home_url, PHP_URL_PATH ), "/" );
-		LogService::legacy_log( "home: $home_path " . @$parsedurl['path'], 5 );
-		if ( $home_path && @strpos( $parsedurl['path'], $home_path ) === 0 ) {
+		LogService::legacy_log( "home: $home_path " . ( $parsedurl['path'] ?? '' ), 5 );
+		if ( $home_path && @strpos( $parsedurl['path'] ?? '', $home_path ) === 0 ) {
 			LogService::legacy_log( "homein!: $home_path", 5 );
 			$parsedurl['path'] = substr( $parsedurl['path'], strlen( $home_path ) );
 			$gluebackhome      = true;
 		}
 
-		if ( @strlen( $parsedurl['path'] ) > 2 ) {
+		if ( @strlen( $parsedurl['path'] ?? '' ) > 2 ) {
 			$secondslashpos = strpos( $parsedurl['path'], "/", 1 );
 			if ( ! $secondslashpos ) {
 				$secondslashpos = strlen( $parsedurl['path'] );
@@ -147,6 +151,11 @@ class Utilities {
 		$newurl    = html_entity_decode( $newurl, ENT_NOQUOTES );
 		$parsedurl = @parse_url( $newurl );
 
+		// if we can't parse the url, we won't touch it either.
+		if ( ! is_array( $parsedurl ) ) {
+			return $url;
+		}
+
 		// if we are dealing with some other url, we won't touch it!
 		if ( isset( $parsedurl['host'] ) && ! ( $parsedurl['host'] == @parse_url( $home_url, PHP_URL_HOST ) ) ) {
 			return $url;
@@ -173,7 +182,7 @@ class Utilities {
 		if ( isset( $parsedurl['path'] ) ) {
 			LogService::legacy_log( "home: $home_path " . $parsedurl['path'], 5 );
 		}
-		if ( $home_path && str_starts_with( $parsedurl['path'], $home_path ) ) {
+		if ( $home_path && str_starts_with( $parsedurl['path'] ?? '', $home_path ) ) {
 			LogService::legacy_log( "homein!: $home_path", 5 );
 			$parsedurl['path'] = substr( $parsedurl['path'], strlen( $home_path ) );
 			$gluebackhome      = true;
@@ -229,6 +238,10 @@ class Utilities {
 	}
 
 	public static function get_language_from_url( $url, $home_url ) {
+		// no url, no language to be found.
+		if ( ! is_string( $url ) ) {
+			return false;
+		}
 
 		$parsedurl = @parse_url( $url );
 
@@ -250,7 +263,7 @@ class Utilities {
 		// remove the language from the url permalink (if in start of path, and is a defined language)
 		$home_path = rtrim( (string) @parse_url( $home_url, PHP_URL_PATH ), "/" );
 //    logger ("home: $home_path ".$parsedurl['path'],5);
-		if ( $home_path && str_starts_with( $parsedurl['path'], $home_path ) ) {
+		if ( $home_path && str_starts_with( $parsedurl['path'] ?? '', $home_path ) ) {
 //        logger ("homein!: $home_path",5);
 			$parsedurl['path'] = substr( $parsedurl['path'], strlen( $home_path ) );
 //        $gluebackhome = true;
@@ -506,6 +519,10 @@ class Utilities {
 		if ( $http_accept_language == "auto" ) {
 			$http_accept_language = Utilities::get_clean_server_var( 'HTTP_ACCEPT_LANGUAGE' );
 		}
+		// a missing header arrives as null, and the regex below does not take nulls.
+		if ( ! is_string( $http_accept_language ) ) {
+			$http_accept_language = '';
+		}
 
 		// standard  for HTTP_ACCEPT_LANGUAGE is defined under
 		// http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.4
@@ -603,6 +620,10 @@ class Utilities {
 	 * @return string
 	 */
 	public static function wordpress_user_by_by( $by ) {
+		// no author metadata to work with.
+		if ( null === $by || '' === $by ) {
+			return $by;
+		}
 		if ( ! str_contains( $by, '.' ) && ! str_contains( $by, ':' ) && is_numeric( $by ) ) {
 			$user_info = get_userdata( $by );
 			$by        = $user_info->user_login;

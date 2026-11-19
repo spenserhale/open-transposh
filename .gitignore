@@ -1,4 +1,7 @@
 /vendor/
+/node_modules/
+.phpunit.cache/
+.phpunit.result.cache
 phpunit.xml
 
 # Log files
@@ -86,3 +89,4 @@ fabric.properties
 # Android studio 3.1+ serialized cache file
 .idea/caches/build_file_checksums.ser
 
+test-results/

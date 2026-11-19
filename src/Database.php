@@ -9,6 +9,9 @@ use Memcache;
 class Database {
 	const TRANSPOSH_OPTIONS_DBSETUP = 'transposh_inside_dbupgrade';
 
+	// total attempts made when a deadlock hits the translation update sequence, decision record 0002.
+	const UPDATE_TRANSLATION_MAX_ATTEMPTS = 3;
+
 	/** @var Plugin father class */
 	private $transposh;
 
@@ -24,6 +27,9 @@ class Database {
 	/** @var bool is memcached working */
 	private $memcache_working = false;
 
+	/** @var bool whether the memcached connection was already attempted */
+	private $memcache_connect_attempted = false;
+
 	/** @var Memcache the memcached connection object */
 	private $memcache;
 
@@ -34,17 +40,27 @@ class Database {
 		$this->transposh             = &$transposh;
 		$this->translation_table     = $GLOBALS['wpdb']->prefix . TRANSLATIONS_TABLE;
 		$this->translation_log_table = $GLOBALS['wpdb']->prefix . TRANSLATIONS_LOG;
+	}
 
-		if ( class_exists( Memcache::class ) ) {
-			if ( $this->transposh->options->debug_enable ) {
-				LogService::legacy_log( 'Trying pecl-Memcache!', 3 );
-			}
-			$this->memcache_working = true;
-			$this->memcache         = new Memcache;
-			@$this->memcache->connect( TP_MEMCACHED_SRV, TP_MEMCACHED_PORT ) or $this->memcache_working = false;
-			if ( $this->transposh->options->debug_enable && $this->memcache_working ) {
-				LogService::legacy_log( 'Memcache seems working' );
-			}
+	/**
+	 * Connect to memcached on first cache use instead of at startup (issue #32):
+	 * the connection is optional, hosts may have the extension installed without a
+	 * local server, and the constructor attempt fired on every request. Failure
+	 * keeps the cache ops on their APCu/xcache fallbacks, as before.
+	 */
+	private function maybe_connect_memcache() {
+		if ( $this->memcache_connect_attempted || ! TP_ENABLE_CACHE || ! class_exists( Memcache::class ) ) {
+			return;
+		}
+		$this->memcache_connect_attempted = true;
+		if ( $this->transposh->options->debug_enable ) {
+			LogService::legacy_log( 'Trying pecl-Memcache!', 3 );
+		}
+		$this->memcache_working = true;
+		$this->memcache         = new Memcache;
+		@$this->memcache->connect( TP_MEMCACHED_SRV, TP_MEMCACHED_PORT ) or $this->memcache_working = false;
+		if ( $this->transposh->options->debug_enable && $this->memcache_working ) {
+			LogService::legacy_log( 'Memcache seems working' );
 		}
 	}
 
@@ -60,6 +76,7 @@ class Database {
 		if ( ! TP_ENABLE_CACHE ) {
 			return null;
 		}
+		$this->maybe_connect_memcache();
 		$key = $lang . '_' . $original;
 		if ( $this->memcache_working ) {
 			$cached = $this->memcache->get( $key );
@@ -102,6 +119,7 @@ class Database {
 		if ( ! TP_ENABLE_CACHE ) {
 			return false;
 		}
+		$this->maybe_connect_memcache();
 		$key = $lang . '_' . $original;
 		if ( $translated !== null ) {
 			$translated = implode( '_', $translated );
@@ -138,6 +156,7 @@ class Database {
 		if ( ! TP_ENABLE_CACHE ) {
 			return;
 		}
+		$this->maybe_connect_memcache();
 		$key = $lang . '_' . $original;
 		if ( $this->memcache_working ) {
 			$this->memcache->delete( $key );
@@ -159,6 +178,7 @@ class Database {
 		if ( ! TP_ENABLE_CACHE ) {
 			return;
 		}
+		$this->maybe_connect_memcache();
 		if ( $this->memcache_working ) {
 			$this->memcache->flush();
 		} elseif ( function_exists( 'apc_clear_cache' ) ) {
@@ -323,17 +343,22 @@ class Database {
 	 */
 	function update_translation( $by = "" ): ?array {
 
-		$ref    = getenv( 'HTTP_REFERER' );
-		$items  = $_POST['items'];
-		$lang   = $_POST['ln0'];
-		$source = $_POST['sr0'];
-		// check params
-		LogService::legacy_log( "Enter " . __FILE__ . " Params: $items, $lang, $ref", 5 );
-		if ( ! isset( $items ) || ! isset( $lang ) ) {
-			LogService::legacy_log( "Enter " . __FILE__ . " missing Params: $items, $lang, $ref", 1 );
+		$ref = getenv( 'HTTP_REFERER' );
+		// check params before reading them, $items holds the count of posted translation items.
+		if ( ! isset( $_POST['items'], $_POST['ln0'] ) ) {
+			LogService::legacy_log( "Enter " . __FILE__ . " missing Params: $ref", 1 );
 
 			return null;
 		}
+		// This public endpoint accepts translation posts without a nonce, the language edit list
+		// and translator permissions below are the drop-in compatible authorization.
+		// phpcs:disable WordPress.Security.NonceVerification.Missing
+		$items  = (int) sanitize_text_field( wp_unslash( $_POST['items'] ) );
+		$lang   = sanitize_text_field( wp_unslash( $_POST['ln0'] ) );
+		$source = isset( $_POST['sr0'] ) ? sanitize_text_field( wp_unslash( $_POST['sr0'] ) ) : 0;
+		// phpcs:enable
+		// check params
+		LogService::legacy_log( "Enter " . __FILE__ . " Params: $items, $lang, $ref", 5 );
 
 		//Check permissions, first the lanugage must be on the edit list. Then either the user
 		//is a translator or automatic translation if it is enabled.
@@ -371,6 +396,7 @@ class Database {
 		$backup_immidiate_possible = false;
 		$firstitem                 = true;
 		$alreadybatched            = array();
+		$invalidate_keys           = array();
 		// We are now processing all posted items
 		for ( $i = 0; $i < $items; $i ++ ) {
 			if ( isset( $_POST["tk$i"] ) ) {
@@ -386,10 +412,12 @@ class Database {
 				$translation = esc_sql( htmlspecialchars( stripslashes( rawurldecode( $trans ) ) ) );
 			}
 			if ( isset( $_POST["ln$i"] ) ) {
-				$lang = $_POST["ln$i"];
+				// esc_sql for the raw lang='$lang' interpolations below; sanitize alone keeps
+				// quotes, and wp_unslash removed the magic-quoting that used to guard them.
+				$lang = esc_sql( sanitize_text_field( wp_unslash( $_POST[ "ln$i" ] ) ) );
 			}
 			if ( isset( $_POST["sr$i"] ) ) {
-				$source = $_POST["sr$i"];
+				$source = (int) $_POST[ "sr$i" ];
 			}
 
 			// we attempt to avoid
@@ -426,6 +454,7 @@ class Database {
 
 			// If we have caching - we remove previous entry from cache
 			$this->cache_delete( $original, $lang );
+			$invalidate_keys[] = array( $original, $lang );
 			$firstitem = false;
 			// TODO - maybe store value here?
 		}
@@ -434,6 +463,55 @@ class Database {
 		if ( ! $values ) {
 			return null;
 		}
+		// Retry the whole three-statement sequence in place on a MySQL deadlock instead of opening a transaction, decision record 0002 (issue #30).
+		for ( $attempt = 1; $attempt <= self::UPDATE_TRANSLATION_MAX_ATTEMPTS; $attempt ++ ) {
+			$updated = $this->apply_translation_update( $delvalues, $values );
+			if ( $updated || ! $this->last_error_is_deadlock() ) {
+				break;
+			}
+			// the rows are still locked by another transaction, pause briefly before restarting.
+			usleep( 50000 );
+		}
+		// a failed sequence is reported once, after the last attempt, a mid-retry header would mark a later successful attempt as 404.
+		if ( ! $updated ) {
+			LogService::legacy_log( $GLOBALS['wpdb']->last_error, 1 );
+			header( "HTTP/1.0 404 Failed to update language database " . $GLOBALS['wpdb']->last_error );
+		} else {
+			// a read during a retry pause may have re-cached the overwritten row, invalidate again after the write
+			foreach ( $invalidate_keys as [ $cache_original, $cache_lang ] ) {
+				$this->cache_delete( $cache_original, $cache_lang );
+			}
+		}
+
+		// if its a human translation we will call the action, this takes the assumption of a single human translation in
+		// a function call, which should probably be verified (FIXME move up?)
+		// success effects only run when the update persisted, a failed update must not fire them
+		if ( $updated && $source == 0 ) {
+			do_action( 'transposh_human_translation', $translation, $original, $lang, $loguser );
+		}
+
+		// TODO: move this to an action
+		// Should we backup now?
+		if ( $updated && $backup_immidiate_possible && $this->transposh->options->transposh_backup_schedule == 2 ) {
+			return $this->transposh->run_backup();
+		}
+		// this is a termination for the ajax sequence
+		//exit;
+		return null;
+	}
+
+	/**
+	 * Run the translation update sequence: copy the rows we are about to overwrite to the
+	 * log, remove them from the main table and insert the new translations. The statements
+	 * stay in autocommit mode - on a deadlock the caller retries this whole sequence
+	 * (decision record 0002), no transaction is opened.
+	 *
+	 * @param string $delvalues WHERE conditions selecting the rows we overwrite.
+	 * @param string $values    VALUES tuples for the new translations.
+	 *
+	 * @return bool true when the sequence fully applied
+	 */
+	private function apply_translation_update( string $delvalues, string $values ): bool {
 		// First we copy what we will overwrite to the log
 		$copytolog = "INSERT INTO {$this->translation_log_table} (original, translated, lang, translated_by, source, timestamp) " .
 		             "SELECT original, translated, lang, translated_by, source, timestamp " .
@@ -444,7 +522,8 @@ class Database {
 		if ( $copyresult === false ) {
 			LogService::legacy_log( $GLOBALS['wpdb']->last_error, 1 );
 			LogService::legacy_log( "Error !!! failed to move to log $delvalues,", 1 );
-			header( "HTTP/1.0 404 Failed to update language database " . $GLOBALS['wpdb']->last_error );
+
+			return false;
 		}
 
 		// now we remove existing values
@@ -454,7 +533,8 @@ class Database {
 		if ( $delresult === false ) {
 			LogService::legacy_log( $GLOBALS['wpdb']->last_error, 1 );
 			LogService::legacy_log( "Error !!! failed remove $delvalues,", 1 );
-			header( "HTTP/1.0 404 Failed to update language database " . $GLOBALS['wpdb']->last_error );
+
+			return false;
 		}
 
 		// and finally - insert new ones
@@ -465,26 +545,26 @@ class Database {
 		// if the insertion worked, we will update the translation log
 		if ( $addresult !== false ) {
 			LogService::legacy_log( "Inserted to db '$values'", 3 );
-		} else {
-			LogService::legacy_log( $GLOBALS['wpdb']->last_error, 1 );
-			LogService::legacy_log( "Error !!! failed to insert to db $original , $translation, $lang,", 1 );
-			header( "HTTP/1.0 404 Failed to update language database " . $GLOBALS['wpdb']->last_error );
-		}
 
-		// if its a human translation we will call the action, this takes the assumption of a single human translation in
-		// a function call, which should probably be verified (FIXME move up?)
-		if ( $source == 0 ) {
-			do_action( 'transposh_human_translation', $translation, $original, $lang, $loguser );
+			return true;
 		}
+		LogService::legacy_log( $GLOBALS['wpdb']->last_error, 1 );
+		LogService::legacy_log( "Error !!! failed to insert to db $values,", 1 );
 
-		// TODO: move this to an action
-		// Should we backup now?
-		if ( $backup_immidiate_possible && $this->transposh->options->transposh_backup_schedule == 2 ) {
-			return $this->transposh->run_backup();
-		}
-		// this is a termination for the ajax sequence
-		//exit;
-		return null;
+		return false;
+	}
+
+	/**
+	 * Does the last database error report a MySQL deadlock (error 1213) or a lock wait
+	 * timeout (error 1205)? Both message texts carry "try restarting transaction",
+	 * $wpdb exposes no numeric code, so that shared phrase is matched case-insensitively.
+	 *
+	 * @return bool true when the failed sequence may be retried
+	 */
+	private function last_error_is_deadlock(): bool {
+		$last_error = (string) $GLOBALS['wpdb']->last_error;
+
+		return false !== stripos( $last_error, 'try restarting transaction' );
 	}
 
 	/*
@@ -501,11 +581,11 @@ class Database {
 		$query = <<<SQL
 SELECT translated, translated_by, timestamp, source, user_login
 FROM {$this->translation_log_table}
-	LEFT JOIN {$wpdb->prefix}users ON translated_by = {$wpdb->prefix}users.id
+	LEFT JOIN {$wpdb->users} ON translated_by = {$wpdb->users}.id
 	WHERE original='$original' AND lang='$lang'
 	UNION SELECT translated, translated_by, timestamp, source, user_login 
     FROM {$this->translation_table} 
-    	LEFT JOIN {$wpdb->prefix}users ON translated_by = {$wpdb->prefix}users.id
+    	LEFT JOIN {$wpdb->users} ON translated_by = {$wpdb->users}.id
     	WHERE original='$original' AND lang='$lang'
 ORDER BY timestamp DESC
 SQL;
@@ -535,17 +615,32 @@ SQL;
 	//TODO: post this action to backup
 	public function del_translation_history( $token, $langp, $timestampp ): bool {
 		global $wpdb;
-		$original  = esc_sql( html_entity_decode( $token, ENT_NOQUOTES, 'UTF-8' ) );
-		$lang      = esc_sql( $langp );
-		$timestamp = esc_sql( $timestampp );
+		// Never delete on an empty or malformed timestamp, an unfiltered timestamp would
+		// match every row and bulk-delete the whole history (issue #29). Callers post the
+		// 'YYYY-MM-DD HH:MM:SS' value of the timestamp column (the editor row key and the
+		// history Ajax action both carry it verbatim).
+		$timestamp = trim( (string) $timestampp );
+		if ( '' === $timestamp || ! preg_match( '/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $timestamp ) ) {
+			LogService::legacy_log( "Rejected translation history deletion, bad timestamp: $timestamp", 1 );
+
+			return false;
+		}
+		$original = html_entity_decode( $token, ENT_NOQUOTES, 'UTF-8' );
+		$lang     = $langp;
+		// The queries below interpolate class-owned table names into prepare(), which the
+		// coding standards sniffer still flags, so it is disabled for their duration.
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table names are class-owned, the values are prepared.
 		// first we look in the log table
 		$in_log_table = false;
-		$query        = <<<SQL
-SELECT translated, translated_by, timestamp, source
-FROM {$this->translation_log_table}
-WHERE original='$original' AND lang='$lang' AND timestamp='$timestamp'
-ORDER BY timestamp DESC
-SQL;
+		$query        = $wpdb->prepare(
+			"SELECT translated, translated_by, timestamp, source
+			FROM {$this->translation_log_table}
+			WHERE original = %s AND lang = %s AND timestamp = %s
+			ORDER BY timestamp DESC",
+			$original,
+			$lang,
+			$timestamp
+		);
 		$rows         = $wpdb->get_results( $query );
 		if ( ! empty( $rows ) ) {
 			LogService::legacy_log( 'found in log' );
@@ -554,12 +649,15 @@ SQL;
 		// than we look in the main table, if its not found
 		$in_main_table = false;
 		if ( ! $in_log_table ) {
-			$query = <<<SQL
-SELECT translated, translated_by, timestamp, source
-FROM {$this->translation_table}
-WHERE original='$original' AND lang='$lang' AND timestamp='$timestamp'
-ORDER BY timestamp DESC
-SQL;
+			$query = $wpdb->prepare(
+				"SELECT translated, translated_by, timestamp, source
+				FROM {$this->translation_table}
+				WHERE original = %s AND lang = %s AND timestamp = %s
+				ORDER BY timestamp DESC",
+				$original,
+				$lang,
+				$timestamp
+			);
 			$rows  = $wpdb->get_results( $query );
 			if ( ! empty( $rows ) ) {
 				LogService::legacy_log( 'found in mains' );
@@ -580,47 +678,57 @@ SQL;
 		) {
 			// delete faulty record, if in log
 			if ( $in_log_table ) {
-				$query = <<<SQL
-DELETE FROM {$this->translation_log_table}
-WHERE original='$original' AND lang='$lang' AND timestamp='$timestamp'
-SQL;
+				$query = $wpdb->prepare(
+					"DELETE FROM {$this->translation_log_table}
+					WHERE original = %s AND lang = %s AND timestamp = %s",
+					$original,
+					$lang,
+					$timestamp
+				);
 				$wpdb->query( $query );
 				LogService::legacy_log( $query, 3 );
 			} else {
 				// delete from main table
-				$query = <<<SQL
-DELETE FROM {$this->translation_table}
-WHERE original='$original' AND lang='$lang'
-SQL;
+				$query = $wpdb->prepare(
+					"DELETE FROM {$this->translation_table}
+					WHERE original = %s AND lang = %s",
+					$original,
+					$lang
+				);
 				$wpdb->query( $query );
 				LogService::legacy_log( $query, 3 );
 
-				// clear cache!
-				$this->cache_delete( $original, $lang );
+				// clear cache! Cache keys historically use the escaped original, see fetch_translation().
+				$this->cache_delete( esc_sql( $original ), $lang );
 				// copy from log if possible.
-				$query = <<<SQL
-INSERT INTO {$this->translation_table} (original, translated, lang, translated_by, source, timestamp)
-SELECT original, translated, lang, translated_by, source, timestamp
-FROM {$this->translation_log_table}
-WHERE original='$original' AND lang='$lang'
-ORDER BY timestamp DESC LIMIT 1
-SQL;
+				$query = $wpdb->prepare(
+					"INSERT INTO {$this->translation_table} (original, translated, lang, translated_by, source, timestamp)
+					SELECT original, translated, lang, translated_by, source, timestamp
+					FROM {$this->translation_log_table}
+					WHERE original = %s AND lang = %s
+					ORDER BY timestamp DESC LIMIT 1",
+					$original,
+					$lang
+				);
 				$wpdb->query( $query );
 				LogService::legacy_log( $query, 3 );
 
 				//need to remove last from log now...
-				$query = <<<SQL
-DELETE {$this->translation_log_table}
-FROM {$this->translation_log_table}
-INNER JOIN {$this->translation_table}
-ON {$this->translation_table}.original = {$this->translation_log_table}.original
-AND {$this->translation_table}.lang = {$this->translation_log_table}.lang
-AND {$this->translation_table}.translated = {$this->translation_log_table}.translated
-AND {$this->translation_table}.timestamp = {$this->translation_log_table}.timestamp
-WHERE {$this->translation_log_table}.original='$original' AND {$this->translation_log_table}.lang='$lang'
-SQL;
+				$query = $wpdb->prepare(
+					"DELETE {$this->translation_log_table}
+					FROM {$this->translation_log_table}
+					INNER JOIN {$this->translation_table}
+					ON {$this->translation_table}.original = {$this->translation_log_table}.original
+					AND {$this->translation_table}.lang = {$this->translation_log_table}.lang
+					AND {$this->translation_table}.translated = {$this->translation_log_table}.translated
+					AND {$this->translation_table}.timestamp = {$this->translation_log_table}.timestamp
+					WHERE {$this->translation_log_table}.original = %s AND {$this->translation_log_table}.lang = %s",
+					$original,
+					$lang
+				);
 				LogService::legacy_log( $query, 3 );
 				$wpdb->query( $query );
+				// phpcs:enable
 			}
 
 			return true;
@@ -805,11 +913,16 @@ SQL;
 			update_option( self::TRANSPOSH_OPTIONS_DBSETUP, time() );
 
 			LogService::legacy_log( "Attempting to create table {$this->translation_table}", 1 );
-			// notice - keep every field on a new line or dbdelta fails
-			$rows = $GLOBALS['wpdb']->get_results( "SHOW INDEX FROM {$this->translation_table} WHERE key_name = 'PRIMARY'" );
-			if ( count( $rows ) ) {
-				$GLOBALS['wpdb']->query( "ALTER TABLE {$this->translation_table} DROP PRIMARY KEY" );
+			// Drop a leftover primary key from older schema versions before dbDelta widens the
+			// column (MySQL error 1170), the new schema has none. Existence-checked so fresh
+			// installs never query missing tables (#27, upgrade path from pre-2.0 schemas).
+			if ( $GLOBALS['wpdb']->get_var( $GLOBALS['wpdb']->prepare( 'SHOW TABLES LIKE %s', $this->translation_table ) ) === $this->translation_table ) {
+				$rows = $GLOBALS['wpdb']->get_results( "SHOW INDEX FROM {$this->translation_table} WHERE key_name = 'PRIMARY'" );
+				if ( count( $rows ) ) {
+					$GLOBALS['wpdb']->query( "ALTER TABLE {$this->translation_table} DROP PRIMARY KEY" );
+				}
 			}
+			// notice - keep every field on a new line or dbdelta fails
 			$sql = "CREATE TABLE {$this->translation_table} (
                     original TEXT NOT NULL, 
                     lang CHAR(5) NOT NULL, 
@@ -829,12 +942,16 @@ SQL;
 				$GLOBALS['wpdb']->query( "ALTER TABLE {$this->translation_table} CONVERT TO CHARSET utf8 COLLATE utf8_bin" );
 			}
 			LogService::legacy_log( "Attempting to create table {$this->translation_log_table}", 1 );
+			// same as above, drop a leftover primary key before dbDelta widens the column,
+			// existence-checked so fresh installs never query missing tables (#27).
+			if ( $GLOBALS['wpdb']->get_var( $GLOBALS['wpdb']->prepare( 'SHOW TABLES LIKE %s', $this->translation_log_table ) ) === $this->translation_log_table ) {
+				$rows = $GLOBALS['wpdb']->get_results( "SHOW INDEX FROM {$this->translation_log_table} WHERE key_name = 'PRIMARY'" );
+				if ( count( $rows ) ) {
+					$GLOBALS['wpdb']->query( "ALTER TABLE {$this->translation_log_table} DROP PRIMARY KEY" );
+				}
+			}
 			// notice - keep every field on a new line or dbdelta fails
 			// this should be removed in a far future...
-			$rows = $GLOBALS['wpdb']->get_results( "SHOW INDEX FROM {$this->translation_log_table} WHERE key_name = 'PRIMARY'" );
-			if ( count( $rows ) ) {
-				$GLOBALS['wpdb']->query( "ALTER TABLE {$this->translation_log_table} DROP PRIMARY KEY" );
-			}
 			$sql = "CREATE TABLE {$this->translation_log_table} (
                     original text NOT NULL, 
                     lang CHAR(5) NOT NULL, 

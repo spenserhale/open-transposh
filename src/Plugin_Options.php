@@ -179,6 +179,10 @@ class Plugin_Options {
 		// can't      OpenTransposh\Logging\Logger("creating options");
 		// load them here
 		$this->options = get_option( TRANSPOSH_OPTIONS );
+		// get_option() returns false when the option does not exist yet (fresh install).
+		if ( ! is_array( $this->options ) ) {
+			$this->options = array();
+		}
 //        OpenTransposh\Logging\Logger($this->options);
 
 		$this->register_option( 'default_language', TP_OPT_STRING ); // default?
