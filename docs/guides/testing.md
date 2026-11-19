@@ -42,9 +42,11 @@ The suite expects an administrator `qa_admin` (password in `tests/e2e/smoke.spec
 
 ```bash
 npx wp-env run cli wp user create qa_admin qa_admin@example.com --role=administrator --user_pass=...
+npx wp-env run cli wp theme install twentytwenty
 npx wp-env run cli wp theme activate twentytwenty
 npx wp-env run cli wp widget add transposh sidebar-1 --title=Languages
-npx wp-env run cli wp option update transposh_options --format=json '{"viewable_languages":"en,fr","default_language":"en"}'
+npx wp-env run cli wp option patch update transposh_options viewable_languages en,fr
+npx wp-env run cli wp option patch update transposh_options default_language en
 ```
 
 ### Bare-metal fallback
