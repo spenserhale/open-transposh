@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 Releases up to 2.1.7 predate this file; see the [GitHub releases](https://github.com/spenserhale/open-transposh/releases).
 
-## [Unreleased]
+## [2.1.8] - 2026-11-19
 
 ### Fixed
 
